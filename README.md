@@ -97,18 +97,6 @@ result/
     └── video_title_corrected_timestamps.txt # Corrected timestamps
 ```
 
-**Example:**
-```
-result/
-└── 20250606_153406_MEDIA_TITLE/
-    ├── MEDIA_TITLE.txt
-    ├── MEDIA_TITLE_metadata.json
-    ├── MEDIA_TITLE_timestamps.txt
-    ├── MEDIA_TITLE_corrected.txt
-    ├── MEDIA_TITLE_corrected_metadata.json
-    └── MEDIA_TITLE_corrected_timestamps.txt
-```
-
 ### Timestamp File Format
 ```
 Subtitle with Timestamps (Corrected)
