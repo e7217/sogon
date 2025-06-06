@@ -6,7 +6,7 @@ YouTube 자막 생성기 (간단한 CLI 인터페이스)
 
 import sys
 import json
-from groq_subtitle import youtube_to_subtitle
+from mtt import youtube_to_subtitle
 
 
 def show_preview(file_path, title, max_chars=500):
@@ -41,7 +41,7 @@ def show_metadata_info(metadata_path):
 
 def main():
     """메인 실행 함수"""
-    print("YouTube 자막 생성기 (패키지 버전)")
+    print("Media to Text (MTT) - YouTube 자막 생성기")
     print("=" * 50)
     
     # 명령행 인수로 URL 받기
