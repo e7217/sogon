@@ -1,5 +1,5 @@
 """
-Groq Subtitle Package
+Media to Text (MTT) Package
 YouTube 영상에서 자막을 추출하고 보정하는 패키지
 """
 
