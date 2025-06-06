@@ -69,8 +69,6 @@ YouTube URL → 오디오 추출 → 음성인식 → 텍스트 보정 → 파�
 'PAST API' → 'FastAPI'
 '보커' → '도커'
 '제미나이' → 'Gemini'
-'솔롬봇' → '솔론봇'
-'웅 떠버린' → '비어버린'
 ```
 
 #### 4-2. AI 기반 보정
@@ -95,18 +93,6 @@ result/
     ├── 비디오제목_corrected.txt        # 보정된 텍스트
     ├── 비디오제목_corrected_metadata.json # 보정된 메타데이터
     └── 비디오제목_corrected_timestamps.txt # 보정된 타임스탬프
-```
-
-**예시:**
-```
-result/
-└── 20250606_153406_인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명/
-    ├── 인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명.txt
-    ├── 인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명_metadata.json
-    ├── 인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명_timestamps.txt
-    ├── 인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명_corrected.txt
-    ├── 인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명_corrected_metadata.json
-    └── 인공지능 카톡봇 - 솔론봇(1) 소개 및 구조 설명_corrected_timestamps.txt
 ```
 
 ### 타임스탬프 파일 형식
