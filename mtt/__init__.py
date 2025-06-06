@@ -11,11 +11,11 @@ from .main_processor import youtube_to_subtitle
 
 __version__ = "1.0.0"
 __all__ = [
-    'download_youtube_audio',
-    'transcribe_audio', 
-    'correct_transcription_text',
-    'fix_ai_based_corrections',
-    'create_output_directory',
-    'save_subtitle_and_metadata',
-    'youtube_to_subtitle'
+    "download_youtube_audio",
+    "transcribe_audio",
+    "correct_transcription_text",
+    "fix_ai_based_corrections",
+    "create_output_directory",
+    "save_subtitle_and_metadata",
+    "youtube_to_subtitle",
 ]
