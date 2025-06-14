@@ -127,21 +127,71 @@ def transcribe_audio(audio_file_path, api_key=None):
                 # Adjust segment timestamps with chunk offset
                 adjusted_segments = []
                 for segment in segments:
-                    adjusted_segment = segment.copy() if hasattr(segment, 'copy') else dict(segment)
+                    # Convert to dictionary for consistent handling
+                    if hasattr(segment, '__dict__'):
+                        # Object with attributes - convert to dict
+                        adjusted_segment = vars(segment).copy()
+                    elif hasattr(segment, 'copy'):
+                        # Dictionary or dict-like object
+                        adjusted_segment = segment.copy()
+                    else:
+                        # Fallback to dict conversion
+                        adjusted_segment = dict(segment)
+                    
+                    # Adjust timestamps - check both attribute and key access
+                    start_time = None
+                    end_time = None
+                    
                     if hasattr(segment, 'start'):
-                        adjusted_segment['start'] = segment.start + chunk_start_time
+                        start_time = segment.start
+                    elif 'start' in segment:
+                        start_time = segment['start']
+                    
                     if hasattr(segment, 'end'):
-                        adjusted_segment['end'] = segment.end + chunk_start_time
+                        end_time = segment.end
+                    elif 'end' in segment:
+                        end_time = segment['end']
+                    
+                    if start_time is not None:
+                        adjusted_segment['start'] = start_time + chunk_start_time
+                    if end_time is not None:
+                        adjusted_segment['end'] = end_time + chunk_start_time
+                        
                     adjusted_segments.append(adjusted_segment)
                 
                 # Adjust word timestamps with chunk offset
                 adjusted_words = []
                 for word in words:
-                    adjusted_word = word.copy() if hasattr(word, 'copy') else dict(word)
+                    # Convert to dictionary for consistent handling
+                    if hasattr(word, '__dict__'):
+                        # Object with attributes - convert to dict
+                        adjusted_word = vars(word).copy()
+                    elif hasattr(word, 'copy'):
+                        # Dictionary or dict-like object
+                        adjusted_word = word.copy()
+                    else:
+                        # Fallback to dict conversion
+                        adjusted_word = dict(word)
+                    
+                    # Adjust timestamps - check both attribute and key access
+                    start_time = None
+                    end_time = None
+                    
                     if hasattr(word, 'start'):
-                        adjusted_word['start'] = word.start + chunk_start_time
+                        start_time = word.start
+                    elif 'start' in word:
+                        start_time = word['start']
+                    
                     if hasattr(word, 'end'):
-                        adjusted_word['end'] = word.end + chunk_start_time
+                        end_time = word.end
+                    elif 'end' in word:
+                        end_time = word['end']
+                    
+                    if start_time is not None:
+                        adjusted_word['start'] = start_time + chunk_start_time
+                    if end_time is not None:
+                        adjusted_word['end'] = end_time + chunk_start_time
+                        
                     adjusted_words.append(adjusted_word)
                 
                 metadata = {
