@@ -131,7 +131,8 @@ def fix_ai_based_corrections(text, api_key=None):
                 )
                 logger.debug(f"청크 {i+1} API 호출 성공")
             except Exception as api_error:
-                logger.error(f"청크 {i+1} API 호출 실패: {api_error}")
+                logger.error(f"청크 {i+1} API 호출 실패: {api_error}, 원인: {api_error.__cause__ or '알 수 없음'}")
+                logger.debug(f"청크 {i+1} API 오류 상세: {type(api_error).__name__}: {str(api_error)}")
                 corrected_chunks.append(chunk)  # 원본 청크 사용
                 continue
 
@@ -158,7 +159,10 @@ def fix_ai_based_corrections(text, api_key=None):
         return final_result
 
     except Exception as e:
-        logger.error(f"AI 기반 보정 중 오류 발생: {e}")
+        logger.error(f"AI 기반 보정 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"AI 보정 상세 오류: {type(e).__name__}: {str(e)}")
+        if e.__cause__:
+            logger.debug(f"AI 보정 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return text
 
 
@@ -188,7 +192,8 @@ def parse_timestamp(timestamp_str):
         logger.debug(f"타임스탬프 파싱: {timestamp_str} -> {result}초")
         return result
     except (ValueError, IndexError) as e:
-        logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 오류: {e}")
+        logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 오류: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"타임스탬프 파싱 상세 오류: {type(e).__name__}: {str(e)}")
         return 0.0
 
 

@@ -51,10 +51,11 @@ def show_preview(file_path, title, max_chars=500):
             if len(content) == max_chars:
                 logger.info("...")
                 logger.debug(f"파일 내용이 {max_chars}글자로 제한됨")
-    except FileNotFoundError:
-        logger.error(f"파일을 찾을 수 없음: {file_path}")
+    except FileNotFoundError as e:
+        logger.error(f"파일을 찾을 수 없음: {file_path}, 원인: {e}")
     except Exception as e:
-        logger.error(f"파일 미리보기 오류: {e}")
+        logger.error(f"파일 미리보기 오류: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"파일 미리보기 상세 오류: {type(e).__name__}: {str(e)}")
 
 
 def show_metadata_info(metadata_path):
@@ -75,12 +76,14 @@ def show_metadata_info(metadata_path):
                     logger.debug(f"첫 번째 청크의 세그먼트 상세 정보: {first_chunk.get('segments')[:3] if segment_count > 3 else first_chunk.get('segments')}")
             else:
                 logger.warning("메타데이터가 비어있습니다")
-    except FileNotFoundError:
-        logger.error(f"메타데이터 파일을 찾을 수 없음: {metadata_path}")
+    except FileNotFoundError as e:
+        logger.error(f"메타데이터 파일을 찾을 수 없음: {metadata_path}, 원인: {e}")
     except json.JSONDecodeError as e:
-        logger.error(f"메타데이터 JSON 파싱 오류: {e}")
+        logger.error(f"메타데이터 JSON 파싱 오류: {e}, 파일: {metadata_path}, 위치: {e.pos if hasattr(e, 'pos') else '알 수 없음'}")
+        logger.debug(f"JSON 파싱 상세 오류: {type(e).__name__}: {str(e)}")
     except Exception as e:
-        logger.error(f"메타데이터 정보 표시 오류: {e}")
+        logger.error(f"메타데이터 정보 표시 오류: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"메타데이터 상세 오류: {type(e).__name__}: {str(e)}")
 
 
 def main():
@@ -174,10 +177,12 @@ def main():
             logger.error("❌ 자막 생성에 실패했습니다.")
 
     except Exception as e:
-        logger.error(f"❌ 오류: {e}")
+        logger.error(f"❌ 오류: {e}, 원인: {e.__cause__ or '알 수 없음'}")
         logger.debug(f"예외 상세 정보: {type(e).__name__}: {str(e)}")
         import traceback
         logger.debug(f"스택 트레이스:\n{traceback.format_exc()}")
+        if e.__cause__:
+            logger.debug(f"근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
 
 
 if __name__ == "__main__":
