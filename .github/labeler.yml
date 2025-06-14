@@ -1,0 +1,26 @@
+bug:
+  - any: ['**/bug/**', '**/fix/**']
+  - title: '/\b(bug|fix|issue)\b/i'
+
+enhancement:
+  - any: ['**/feat/**', '**/feature/**']
+  - title: '/\b(feat|feature|enhancement)\b/i'
+
+documentation:
+  - any: ['**/*.md', '**/docs/**', '**/README*']
+  - title: '/\b(docs|documentation)\b/i'
+
+dependencies:
+  - any: ['**/pyproject.toml', '**/uv.lock', '**/requirements*.txt']
+  - title: '/\b(deps|dependencies|dependency)\b/i'
+
+tests:
+  - any: ['**/test/**', '**/tests/**', '**/*test*.py']
+  - title: '/\b(test|testing)\b/i'
+
+refactor:
+  - title: '/\b(refactor|refactoring)\b/i'
+
+ci:
+  - any: ['.github/**', '**/workflows/**']
+  - title: '/\b(ci|workflow|action)\b/i'
