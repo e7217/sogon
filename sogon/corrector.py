@@ -1,5 +1,5 @@
 """
-텍스트 보정 모듈
+Text correction module
 """
 
 import os
@@ -12,40 +12,40 @@ logger = logging.getLogger(__name__)
 
 def fix_ai_based_corrections(text, api_key=None):
     """
-    AI를 이용한 텍스트 후처리 및 보정
+    AI-based text post-processing and correction
 
     Args:
-        text (str): 원본 텍스트
-        api_key (str): Groq API 키
+        text (str): Original text
+        api_key (str): Groq API key
 
     Returns:
-        str: 보정된 텍스트
+        str: Corrected text
     """
-    logger.debug(f"AI 보정 시작: 텍스트 길이={len(text)}, api_key 제공여부={api_key is not None}")
+    logger.debug(f"AI correction started: text length={len(text)}, api_key provided={api_key is not None}")
     
     if not api_key:
         api_key = os.getenv("GROQ_API_KEY")
-        logger.debug("API 키를 환경변수에서 가져옴")
+        logger.debug("API key retrieved from environment variable")
 
     if not api_key:
-        logger.warning("AI 기반 보정을 위한 API 키가 없습니다. 원본 텍스트를 반환합니다.")
-        logger.debug("API 키 없음으로 인해 원본 텍스트 반환")
+        logger.warning("No API key available for AI-based correction. Returning original text.")
+        logger.debug("Returning original text due to missing API key")
         return text
 
     try:
         client = Groq(api_key=api_key)
 
-        # 텍스트가 너무 길면 청크로 나누어 처리
+        # Split text into chunks if too long
         max_chunk_length = 1500
 
-        logger.info(f"원본 텍스트 길이: {len(text)} 문자")
+        logger.info(f"Original text length: {len(text)} characters")
 
         if len(text) <= max_chunk_length:
             chunks = [text]
-            logger.debug(f"텍스트가 최대 길이 이하로 분할 불필요")
+            logger.debug(f"Text is within maximum length, no splitting needed")
         else:
-            logger.debug(f"텍스트가 최대 길이({max_chunk_length})를 초과하여 분할 시작")
-            # 문장으로 분할
+            logger.debug(f"Text exceeds maximum length ({max_chunk_length}), starting split")
+            # Split by sentences
             sentences = re.split(r"[.!?]\s*", text)
 
             if len(sentences) <= 1:
@@ -87,88 +87,88 @@ def fix_ai_based_corrections(text, api_key=None):
 
             if current_chunk:
                 chunks.append(current_chunk)
-                logger.debug(f"마지막 청크 추가: 길이={len(current_chunk)}")
+                logger.debug(f"Added last chunk: length={len(current_chunk)}")
 
-        logger.info(f"총 {len(chunks)}개의 청크로 분할됨")
+        logger.info(f"Text split into {len(chunks)} chunks")
 
         corrected_chunks = []
 
         for i, chunk in enumerate(chunks):
-            logger.info(f"AI 보정 중... ({i + 1}/{len(chunks)}) - 청크 길이: {len(chunk)}")
-            logger.debug(f"청크 {i+1} 내용 미리보기: {chunk[:50]}...")
+            logger.info(f"AI correction in progress... ({i + 1}/{len(chunks)}) - chunk length: {len(chunk)}")
+            logger.debug(f"Chunk {i+1} content preview: {chunk[:50]}...")
 
             if not chunk.strip():
-                logger.warning(f"청크 {i+1}이 비어있어 건너뜀")
+                logger.warning(f"Chunk {i+1} is empty, skipping")
                 continue
 
-            prompt = f"""다음은 한국어 음성인식으로 변환된 텍스트입니다. 
-음성인식 과정에서 발생할 수 있는 오류들을 자연스럽게 수정해주세요:
+            prompt = f"""The following is text converted from Korean speech recognition. 
+Please naturally correct errors that may occur during speech recognition:
 
-1. 잘못 인식된 기술 용어나 고유명사 수정
-2. 문법적으로 어색한 부분 자연스럽게 수정
-3. 의미가 통하지 않는 단어나 구문 수정
-4. 전체적인 문맥과 일치하도록 수정
-5. 원본의 의미와 길이를 최대한 유지
+1. Correct misrecognized technical terms or proper nouns
+2. Naturally correct grammatically awkward parts
+3. Correct words or phrases that don't make sense
+4. Correct to match the overall context
+5. Maintain the original meaning and length as much as possible
 
-원본 텍스트:
+Original text:
 {chunk}
 
-수정된 텍스트만 출력해주세요 (설명이나 부가 설명 없이):"""
+Please output only the corrected text (without explanations or additional descriptions):"""
 
-            logger.debug(f"청크 {i+1} Groq API 호출 시작")
+            logger.debug(f"Starting Groq API call for chunk {i+1}")
             try:
                 response = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[
                         {
                             "role": "system",
-                            "content": "당신은 한국어 텍스트 교정 전문가입니다. 음성인식 오류를 자연스럽게 수정하되, 원본의 의미와 길이를 최대한 유지해야 합니다.",
+                            "content": "You are a Korean text correction expert. You should naturally correct speech recognition errors while maintaining the original meaning and length as much as possible.",
                         },
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.1,
                     max_tokens=3000,
                 )
-                logger.debug(f"청크 {i+1} API 호출 성공")
+                logger.debug(f"Chunk {i+1} API call successful")
             except Exception as api_error:
-                logger.error(f"청크 {i+1} API 호출 실패: {api_error}, 원인: {api_error.__cause__ or '알 수 없음'}")
-                logger.debug(f"청크 {i+1} API 오류 상세: {type(api_error).__name__}: {str(api_error)}")
-                corrected_chunks.append(chunk)  # 원본 청크 사용
+                logger.error(f"Chunk {i+1} API call failed: {api_error}, cause: {api_error.__cause__ or 'unknown'}")
+                logger.debug(f"Chunk {i+1} API error details: {type(api_error).__name__}: {str(api_error)}")
+                corrected_chunks.append(chunk)  # Use original chunk
                 continue
 
             corrected_chunk = response.choices[0].message.content.strip()
-            logger.info(f"청크 {i + 1} 보정 완료: {len(corrected_chunk)} 문자")
+            logger.info(f"Chunk {i + 1} correction completed: {len(corrected_chunk)} characters")
 
             if corrected_chunk:
                 corrected_chunks.append(corrected_chunk)
-                logger.debug(f"청크 {i+1} 보정 결과 미리보기: {corrected_chunk[:50]}...")
+                logger.debug(f"Chunk {i+1} correction result preview: {corrected_chunk[:50]}...")
             else:
-                logger.warning(f"청크 {i+1} 보정 결과가 비어있음")
+                logger.warning(f"Chunk {i+1} correction result is empty")
 
         final_result = " ".join(corrected_chunks)
-        logger.info(f"최종 보정된 텍스트 길이: {len(final_result)} 문자")
-        logger.debug(f"최종 결과 미리보기: {final_result[:100]}...")
+        logger.info(f"Final corrected text length: {len(final_result)} characters")
+        logger.debug(f"Final result preview: {final_result[:100]}...")
         
-        # 보정 비율 계산
+        # Calculate correction ratio
         if len(text) > 0:
             improvement_ratio = len(final_result) / len(text)
-            logger.debug(f"보정 비율: {improvement_ratio:.2f} (원본: {len(text)}, 보정후: {len(final_result)})")
+            logger.debug(f"Correction ratio: {improvement_ratio:.2f} (original: {len(text)}, corrected: {len(final_result)})")
             if improvement_ratio < 0.5:
-                logger.warning(f"보정된 텍스트가 원본의 50% 미만입니다 ({improvement_ratio:.2f})")
+                logger.warning(f"Corrected text is less than 50% of original ({improvement_ratio:.2f})")
 
         return final_result
 
     except Exception as e:
-        logger.error(f"AI 기반 보정 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
-        logger.debug(f"AI 보정 상세 오류: {type(e).__name__}: {str(e)}")
+        logger.error(f"Error occurred during AI-based correction: {e}, cause: {e.__cause__ or 'unknown'}")
+        logger.debug(f"AI correction detailed error: {type(e).__name__}: {str(e)}")
         if e.__cause__:
-            logger.debug(f"AI 보정 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            logger.debug(f"AI correction root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return text
 
 
 def format_timestamp(seconds):
     """
-    초를 HH:mm:ss.SSS 형식으로 변환
+    Convert seconds to HH:mm:ss.SSS format
     """
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -181,7 +181,7 @@ def format_timestamp(seconds):
 
 def parse_timestamp(timestamp_str):
     """
-    타임스탬프 문자열을 초 단위로 변환
+    Convert timestamp string to seconds
     """
     try:
         parts = timestamp_str.split(":")
@@ -189,37 +189,37 @@ def parse_timestamp(timestamp_str):
         minutes = int(parts[1])
         seconds = float(parts[2])
         result = hours * 3600 + minutes * 60 + seconds
-        logger.debug(f"타임스탬프 파싱: {timestamp_str} -> {result}초")
+        logger.debug(f"Timestamp parsing: {timestamp_str} -> {result} seconds")
         return result
     except (ValueError, IndexError) as e:
-        logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 오류: {e}, 원인: {e.__cause__ or '알 수 없음'}")
-        logger.debug(f"타임스탬프 파싱 상세 오류: {type(e).__name__}: {str(e)}")
+        logger.warning(f"Timestamp parsing failed: {timestamp_str}, error: {e}, cause: {e.__cause__ or 'unknown'}")
+        logger.debug(f"Timestamp parsing detailed error: {type(e).__name__}: {str(e)}")
         return 0.0
 
 
 def sort_timestamps_and_fix_overlaps(timestamps_data):
     """
-    타임스탬프를 시간순으로 정렬하고 겹치는 부분 수정
+    Sort timestamps chronologically and fix overlapping parts
     """
-    logger.debug(f"타임스탬프 정렬 시작: {len(timestamps_data)}개 항목")
-    # 시작 시간 기준으로 정렬
+    logger.debug(f"Starting timestamp sorting: {len(timestamps_data)} items")
+    # Sort by start time
     sorted_data = sorted(timestamps_data, key=lambda x: parse_timestamp(x[0]))
-    logger.debug(f"타임스탬프 정렬 완료")
+    logger.debug(f"Timestamp sorting completed")
 
-    # 겹치는 시간 구간 수정
+    # Fix overlapping time intervals
     fixed_data = []
     for i, (start, end, text) in enumerate(sorted_data):
         start_seconds = parse_timestamp(start)
         end_seconds = parse_timestamp(end)
 
-        # 이전 세그먼트와 겹치는지 확인
+        # Check if overlapping with previous segment
         if fixed_data and start_seconds < parse_timestamp(fixed_data[-1][1]):
-            logger.debug(f"세그먼트 {i+1} 겹침 감지: {start} < {fixed_data[-1][1]}")
+            logger.debug(f"Segment {i+1} overlap detected: {start} < {fixed_data[-1][1]}")
             adjusted_start = fixed_data[-1][1]
             if end_seconds <= parse_timestamp(adjusted_start):
                 end_seconds = parse_timestamp(adjusted_start) + 1.0
                 adjusted_end = format_timestamp(end_seconds)
-                logger.debug(f"세그먼트 {i+1} 종료시간 조정: {end} -> {adjusted_end}")
+                logger.debug(f"Segment {i+1} end time adjusted: {end} -> {adjusted_end}")
             else:
                 adjusted_end = end
 
@@ -227,47 +227,47 @@ def sort_timestamps_and_fix_overlaps(timestamps_data):
         else:
             fixed_data.append((start, end, text))
 
-    logger.debug(f"타임스탬프 겹침 수정 완료: {len(fixed_data)}개 항목")
+    logger.debug(f"Timestamp overlap correction completed: {len(fixed_data)} items")
     return fixed_data
 
 
 def correct_transcription_text(text, metadata, api_key=None, use_ai=True):
     """
-    전사된 텍스트를 AI 기반으로 보정
+    Correct transcribed text using AI
     """
-    logger.debug(f"correct_transcription_text 호출: use_ai={use_ai}, metadata_chunks={len(metadata) if metadata else 0}")
-    logger.info("텍스트 보정을 시작합니다...")
-    logger.info(f"원본 텍스트 길이: {len(text)} 문자")
-    logger.info(f"원본 텍스트 미리보기: {text[:100]}...")
+    logger.debug(f"correct_transcription_text called: use_ai={use_ai}, metadata_chunks={len(metadata) if metadata else 0}")
+    logger.info("Starting text correction...")
+    logger.info(f"Original text length: {len(text)} characters")
+    logger.info(f"Original text preview: {text[:100]}...")
 
     corrected_text = text
 
-    # AI 기반 보정
+    # AI-based correction
     if use_ai:
-        logger.info("AI 기반 텍스트 보정...")
+        logger.info("AI-based text correction...")
         ai_corrected_text = fix_ai_based_corrections(text, api_key)
 
-        # AI 보정 결과가 원본의 50% 이상이어야 사용
+        # Use AI correction result only if it's 50% or more of original
         if ai_corrected_text and len(ai_corrected_text.strip()) > len(text) * 0.5:
             corrected_text = ai_corrected_text
-            logger.info(f"AI 보정 완료: {len(corrected_text)} 문자")
+            logger.info(f"AI correction completed: {len(corrected_text)} characters")
             quality_ratio = len(ai_corrected_text.strip()) / len(text)
-            logger.debug(f"AI 보정 품질 비율: {quality_ratio:.2f}")
+            logger.debug(f"AI correction quality ratio: {quality_ratio:.2f}")
         else:
-            logger.warning("AI 보정 결과가 너무 짧음 - 원본 텍스트를 사용합니다.")
+            logger.warning("AI correction result too short - using original text.")
             if ai_corrected_text:
-                logger.debug(f"AI 보정 결과 길이: {len(ai_corrected_text.strip())}, 원본 길이: {len(text)}, 비율: {len(ai_corrected_text.strip()) / len(text):.2f}")
+                logger.debug(f"AI correction result length: {len(ai_corrected_text.strip())}, original length: {len(text)}, ratio: {len(ai_corrected_text.strip()) / len(text):.2f}")
             else:
-                logger.debug("AI 보정 결과가 None 또는 비어있음")
+                logger.debug("AI correction result is None or empty")
 
-    # 타임스탬프 데이터 정리
-    logger.info("타임스탬프 정렬 및 보정...")
-    logger.debug(f"metadata 청크 수: {len(metadata)}")
+    # Clean up timestamp data
+    logger.info("Sorting and correcting timestamps...")
+    logger.debug(f"Number of metadata chunks: {len(metadata)}")
     corrected_metadata = []
 
     for idx, chunk in enumerate(metadata):
         segments = chunk.get("segments", [])
-        logger.debug(f"청크 {idx+1} 처리 시작: segments={len(segments)}")
+        logger.debug(f"Processing chunk {idx+1}: segments={len(segments)}")
         timestamps_data = []
 
         for segment in segments:
@@ -278,13 +278,13 @@ def correct_transcription_text(text, metadata, api_key=None, use_ai=True):
             if segment_text:
                 timestamps_data.append((start_time, end_time, segment_text))
 
-        # 타임스탬프 정렬 및 겹침 수정
-        logger.debug(f"청크 {idx+1} 타임스탬프 데이터 수: {len(timestamps_data)}")
+        # Sort timestamps and fix overlaps
+        logger.debug(f"Chunk {idx+1} timestamp data count: {len(timestamps_data)}")
         fixed_timestamps = sort_timestamps_and_fix_overlaps(timestamps_data)
         if len(fixed_timestamps) != len(timestamps_data):
-            logger.warning(f"청크 {idx+1} 타임스탬프 수정 후 개수 변경: {len(timestamps_data)} -> {len(fixed_timestamps)}")
+            logger.warning(f"Chunk {idx+1} timestamp count changed after correction: {len(timestamps_data)} -> {len(fixed_timestamps)}")
 
-        # 수정된 세그먼트로 메타데이터 업데이트
+        # Update metadata with corrected segments
         updated_segments = []
         for start_time, end_time, segment_text in fixed_timestamps:
             updated_segments.append(
@@ -299,6 +299,6 @@ def correct_transcription_text(text, metadata, api_key=None, use_ai=True):
         corrected_chunk["segments"] = updated_segments
         corrected_metadata.append(corrected_chunk)
 
-    logger.info("텍스트 보정이 완료되었습니다!")
-    logger.debug(f"보정 완료: 텍스트 길이={len(corrected_text)}, 메타데이터 청크 수={len(corrected_metadata)}")
+    logger.info("Text correction completed!")
+    logger.debug(f"Correction completed: text length={len(corrected_text)}, metadata chunks={len(corrected_metadata)}")
     return corrected_text, corrected_metadata

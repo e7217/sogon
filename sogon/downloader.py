@@ -1,5 +1,5 @@
 """
-YouTube 오디오 다운로드 모듈
+YouTube audio download module
 """
 
 import os
@@ -14,52 +14,52 @@ logger = logging.getLogger(__name__)
 
 def download_youtube_audio(url, output_dir=None):
     """
-    YouTube 비디오에서 오디오를 다운로드
+    Download audio from YouTube video
 
     Args:
         url (str): YouTube URL
-        output_dir (str): 출력 디렉토리 (없으면 임시 디렉토리 사용)
+        output_dir (str): Output directory (uses temporary directory if not provided)
 
     Returns:
-        str: 다운로드된 오디오 파일 경로
+        str: Downloaded audio file path
     """
     if output_dir is None:
         output_dir = tempfile.mkdtemp()
 
-    # yt-dlp 옵션 설정 (다운로드 속도 최적화)
+    # Configure yt-dlp options (download speed optimization)
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",  # m4a 우선 선택으로 속도 개선
+        "format": "bestaudio[ext=m4a]/bestaudio/best",  # Prefer m4a for speed improvement
         "extractaudio": True,
         "audioformat": "wav",
         "outtmpl": os.path.join(output_dir, "%(title)s.%(ext)s"),
-        "socket_timeout": 30,  # 소켓 타임아웃 단축 (기본 60초 → 30초)
-        "retries": 3,  # 재시도 횟수 감소 (기본 10회 → 3회)
-        "fragment_retries": 3,  # 프래그먼트 재시도 횟수 감소
-        "http_chunk_size": 5242880,  # HTTP 청크 크기 5MB로 설정
-        "concurrent_fragment_downloads": 4,  # 동시 프래그먼트 다운로드 4개
+        "socket_timeout": 30,  # Reduced socket timeout (default 60s → 30s)
+        "retries": 3,  # Reduced retry count (default 10 → 3)
+        "fragment_retries": 3,  # Reduced fragment retry count
+        "http_chunk_size": 5242880,  # Set HTTP chunk size to 5MB
+        "concurrent_fragment_downloads": 4,  # 4 concurrent fragment downloads
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "wav",
-                "preferredquality": "128",  # 품질 낮춰서 속도 개선 (192 → 128)
+                "preferredquality": "128",  # Lower quality for speed improvement (192 → 128)
             }
         ],
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # 비디오 정보 가져오기
+            # Get video information
             info = ydl.extract_info(url, download=False)
             title = info.get("title", "unknown")
 
-            # 파일명에서 특수문자 제거
+            # Remove special characters from filename
             safe_title = re.sub(r'[<>:"/\\|?*]', "", title)
             output_path = os.path.join(output_dir, f"{safe_title}.wav")
 
-            # 다운로드
+            # Download
             ydl.download([url])
 
-            # 다운로드된 파일 찾기
+            # Find downloaded file
             for file in os.listdir(output_dir):
                 if file.endswith(".wav"):
                     return os.path.join(output_dir, file)
@@ -67,45 +67,45 @@ def download_youtube_audio(url, output_dir=None):
             return output_path
 
     except Exception as e:
-        logger.error(f"YouTube 오디오 다운로드 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
-        logger.debug(f"YouTube 다운로드 상세 오류: {type(e).__name__}: {str(e)}")
+        logger.error(f"Error occurred during YouTube audio download: {e}, cause: {e.__cause__ or 'unknown'}")
+        logger.debug(f"YouTube download detailed error: {type(e).__name__}: {str(e)}")
         if e.__cause__:
-            logger.debug(f"YouTube 다운로드 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            logger.debug(f"YouTube download root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return None
 
 
 def split_audio_by_size(audio_path, max_size_mb=24):
     """
-    오디오 파일을 크기 기준으로 분할
+    Split audio file based on size
 
     Args:
-        audio_path (str): 오디오 파일 경로
-        max_size_mb (int): 최대 파일 크기 (MB)
+        audio_path (str): Audio file path
+        max_size_mb (int): Maximum file size (MB)
 
     Returns:
-        list: 분할된 오디오 파일 경로 목록
+        list: List of split audio file paths
     """
     try:
-        # 파일 크기 확인
+        # Check file size
         file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
 
         if file_size_mb <= max_size_mb:
             return [audio_path]
 
-        # pydub으로 오디오 로드
+        # Load audio with pydub
         audio = AudioSegment.from_wav(audio_path)
 
-        # 청크 길이 계산 (파일 크기 기준)
-        total_duration = len(audio)  # 밀리초
+        # Calculate chunk length (based on file size)
+        total_duration = len(audio)  # milliseconds
         chunk_duration = int(
             (max_size_mb / file_size_mb) * total_duration * 0.9
-        )  # 안전 마진
+        )  # safety margin
 
         chunks = []
         temp_dir = os.path.dirname(audio_path)
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
 
-        # 오디오 분할
+        # Split audio
         for i, start_time in enumerate(range(0, total_duration, chunk_duration)):
             end_time = min(start_time + chunk_duration, total_duration)
             chunk = audio[start_time:end_time]
@@ -117,8 +117,8 @@ def split_audio_by_size(audio_path, max_size_mb=24):
         return chunks
 
     except Exception as e:
-        logger.error(f"오디오 분할 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
-        logger.debug(f"오디오 분할 상세 오류: {type(e).__name__}: {str(e)}")
+        logger.error(f"Error occurred during audio splitting: {e}, cause: {e.__cause__ or 'unknown'}")
+        logger.debug(f"Audio splitting detailed error: {type(e).__name__}: {str(e)}")
         if e.__cause__:
-            logger.debug(f"오디오 분할 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            logger.debug(f"Audio splitting root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return [audio_path]
