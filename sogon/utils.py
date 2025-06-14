@@ -5,8 +5,11 @@
 import os
 import json
 import re
+import logging
 from datetime import datetime
 from .corrector import format_timestamp, correct_transcription_text
+
+logger = logging.getLogger(__name__)
 
 
 def create_output_directory(base_dir="./result", video_title=None):
@@ -87,9 +90,9 @@ def save_subtitle_and_metadata(
             for start_time, end_time, segment_text in timestamps_data:
                 f.write(f"[{start_time} → {end_time}] {segment_text}\n")
 
-        print(f"원본 자막이 저장되었습니다: {subtitle_path}")
-        print(f"원본 메타데이터가 저장되었습니다: {metadata_path}")
-        print(f"원본 타임스탬프가 저장되었습니다: {timestamp_path}")
+        logger.info(f"원본 자막이 저장되었습니다: {subtitle_path}")
+        logger.info(f"원본 메타데이터가 저장되었습니다: {metadata_path}")
+        logger.info(f"원본 타임스탬프가 저장되었습니다: {timestamp_path}")
 
         corrected_files = None
 
@@ -149,16 +152,16 @@ def save_subtitle_and_metadata(
                     corrected_timestamp_path,
                 )
 
-                print(f"보정된 자막이 저장되었습니다: {corrected_subtitle_path}")
-                print(f"보정된 메타데이터가 저장되었습니다: {corrected_metadata_path}")
-                print(f"보정된 타임스탬프가 저장되었습니다: {corrected_timestamp_path}")
+                logger.info(f"보정된 자막이 저장되었습니다: {corrected_subtitle_path}")
+                logger.info(f"보정된 메타데이터가 저장되었습니다: {corrected_metadata_path}")
+                logger.info(f"보정된 타임스탬프가 저장되었습니다: {corrected_timestamp_path}")
 
             except Exception as e:
-                print(f"텍스트 보정 중 오류 발생: {e}")
-                print("원본 파일만 저장됩니다.")
+                logger.error(f"텍스트 보정 중 오류 발생: {e}")
+                logger.warning("원본 파일만 저장됩니다.")
 
         return subtitle_path, metadata_path, timestamp_path, corrected_files
 
     except Exception as e:
-        print(f"파일 저장 중 오류 발생: {e}")
+        logger.error(f"파일 저장 중 오류 발생: {e}")
         return None, None, None, None

@@ -5,10 +5,13 @@
 import os
 import tempfile
 from pathlib import Path
+import logging
 import yt_dlp
 from .downloader import download_youtube_audio
 from .transcriber import transcribe_audio
 from .utils import create_output_directory, save_subtitle_and_metadata
+
+logger = logging.getLogger(__name__)
 
 
 def youtube_to_subtitle(
@@ -33,7 +36,7 @@ def youtube_to_subtitle(
     """
     try:
         # 먼저 비디오 정보를 가져와서 제목 확인
-        print("YouTube 비디오 정보 가져오는 중...")
+        logger.info("YouTube 비디오 정보 가져오는 중...")
         ydl_opts = {"quiet": True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -41,23 +44,23 @@ def youtube_to_subtitle(
 
         # 날짜/시간/제목 형식으로 출력 디렉토리 생성
         output_dir = create_output_directory(base_output_dir, video_title)
-        print(f"출력 디렉토리 생성: {output_dir}")
+        logger.info(f"출력 디렉토리 생성: {output_dir}")
 
-        print("YouTube에서 오디오 다운로드 중...")
+        logger.info("YouTube에서 오디오 다운로드 중...")
         audio_path = download_youtube_audio(url)
 
         if not audio_path:
-            print("오디오 다운로드에 실패했습니다.")
+            logger.error("오디오 다운로드에 실패했습니다.")
             return None, None, None
 
-        print(f"오디오 다운로드 완료: {audio_path}")
-        print("Groq Whisper Turbo로 자막 생성 중...")
+        logger.info(f"오디오 다운로드 완료: {audio_path}")
+        logger.info("Groq Whisper Turbo로 자막 생성 중...")
 
         # 음성 인식 (메타데이터 포함)
         subtitle_text, metadata = transcribe_audio(audio_path)
 
         if not subtitle_text:
-            print("음성 인식에 실패했습니다.")
+            logger.error("음성 인식에 실패했습니다.")
             return None, None, None
 
         # 자막 및 메타데이터 파일 저장 (보정 포함)
@@ -89,5 +92,5 @@ def youtube_to_subtitle(
             return result[:3] if result else None, None, output_dir
 
     except Exception as e:
-        print(f"자막 생성 중 오류 발생: {e}")
+        logger.error(f"자막 생성 중 오류 발생: {e}")
         return None, None, None

@@ -5,8 +5,11 @@ YouTube 오디오 다운로드 모듈
 import os
 import tempfile
 import re
+import logging
 import yt_dlp
 from pydub import AudioSegment
+
+logger = logging.getLogger(__name__)
 
 
 def download_youtube_audio(url, output_dir=None):
@@ -59,7 +62,7 @@ def download_youtube_audio(url, output_dir=None):
             return output_path
 
     except Exception as e:
-        print(f"YouTube 오디오 다운로드 중 오류 발생: {e}")
+        logger.error(f"YouTube 오디오 다운로드 중 오류 발생: {e}")
         return None
 
 
@@ -106,5 +109,5 @@ def split_audio_by_size(audio_path, max_size_mb=24):
         return chunks
 
     except Exception as e:
-        print(f"오디오 분할 중 오류 발생: {e}")
+        logger.error(f"오디오 분할 중 오류 발생: {e}")
         return [audio_path]
