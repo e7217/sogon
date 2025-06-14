@@ -62,7 +62,8 @@ def transcribe_audio(audio_file_path, api_key=None):
                     )
                 logger.debug(f"청크 {i+1} Whisper 전사 성공")
             except Exception as api_error:
-                logger.error(f"청크 {i+1} Whisper 전사 실패: {api_error}")
+                logger.error(f"청크 {i+1} Whisper 전사 실패: {api_error}, 원인: {api_error.__cause__ or '알 수 없음'}")
+                logger.debug(f"청크 {i+1} API 오류 상세: {type(api_error).__name__}: {str(api_error)}")
                 continue
 
                 # 텍스트와 메타데이터 분리
@@ -98,7 +99,8 @@ def transcribe_audio(audio_file_path, api_key=None):
                     os.remove(chunk_path)
                     logger.debug(f"청크 {i + 1} 임시 파일 삭제 완료: {chunk_path}")
                 except OSError as e:
-                    logger.warning(f"청크 {i + 1} 임시 파일 삭제 실패: {e}")
+                    logger.warning(f"청크 {i + 1} 임시 파일 삭제 실패: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+                    logger.debug(f"파일 삭제 상세 오류: {type(e).__name__}: {str(e)}")
 
         # 모든 전사 결과 합치기
         combined_text = " ".join(all_transcriptions)
@@ -117,8 +119,10 @@ def transcribe_audio(audio_file_path, api_key=None):
         return combined_text, all_metadata
 
     except Exception as e:
-        logger.error(f"오디오 변환 중 오류 발생: {e}")
+        logger.error(f"오디오 변환 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
         logger.debug(f"예외 상세 정보: {type(e).__name__}: {str(e)}")
         import traceback
         logger.debug(f"스택 트레이스:\n{traceback.format_exc()}")
+        if e.__cause__:
+            logger.debug(f"오디오 변환 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return None, None

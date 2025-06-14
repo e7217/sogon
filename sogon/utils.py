@@ -157,11 +157,17 @@ def save_subtitle_and_metadata(
                 logger.info(f"보정된 타임스탬프가 저장되었습니다: {corrected_timestamp_path}")
 
             except Exception as e:
-                logger.error(f"텍스트 보정 중 오류 발생: {e}")
+                logger.error(f"텍스트 보정 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+                logger.debug(f"텍스트 보정 상세 오류: {type(e).__name__}: {str(e)}")
+                if e.__cause__:
+                    logger.debug(f"텍스트 보정 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
                 logger.warning("원본 파일만 저장됩니다.")
 
         return subtitle_path, metadata_path, timestamp_path, corrected_files
 
     except Exception as e:
-        logger.error(f"파일 저장 중 오류 발생: {e}")
+        logger.error(f"파일 저장 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"파일 저장 상세 오류: {type(e).__name__}: {str(e)}")
+        if e.__cause__:
+            logger.debug(f"파일 저장 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return None, None, None, None

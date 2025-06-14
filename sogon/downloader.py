@@ -26,17 +26,22 @@ def download_youtube_audio(url, output_dir=None):
     if output_dir is None:
         output_dir = tempfile.mkdtemp()
 
-    # yt-dlp 옵션 설정
+    # yt-dlp 옵션 설정 (다운로드 속도 최적화)
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio/best",  # m4a 우선 선택으로 속도 개선
         "extractaudio": True,
         "audioformat": "wav",
         "outtmpl": os.path.join(output_dir, "%(title)s.%(ext)s"),
+        "socket_timeout": 30,  # 소켓 타임아웃 단축 (기본 60초 → 30초)
+        "retries": 3,  # 재시도 횟수 감소 (기본 10회 → 3회)
+        "fragment_retries": 3,  # 프래그먼트 재시도 횟수 감소
+        "http_chunk_size": 5242880,  # HTTP 청크 크기 5MB로 설정
+        "concurrent_fragment_downloads": 4,  # 동시 프래그먼트 다운로드 4개
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "wav",
-                "preferredquality": "192",
+                "preferredquality": "128",  # 품질 낮춰서 속도 개선 (192 → 128)
             }
         ],
     }
@@ -62,7 +67,10 @@ def download_youtube_audio(url, output_dir=None):
             return output_path
 
     except Exception as e:
-        logger.error(f"YouTube 오디오 다운로드 중 오류 발생: {e}")
+        logger.error(f"YouTube 오디오 다운로드 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"YouTube 다운로드 상세 오류: {type(e).__name__}: {str(e)}")
+        if e.__cause__:
+            logger.debug(f"YouTube 다운로드 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return None
 
 
@@ -109,5 +117,8 @@ def split_audio_by_size(audio_path, max_size_mb=24):
         return chunks
 
     except Exception as e:
-        logger.error(f"오디오 분할 중 오류 발생: {e}")
+        logger.error(f"오디오 분할 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
+        logger.debug(f"오디오 분할 상세 오류: {type(e).__name__}: {str(e)}")
+        if e.__cause__:
+            logger.debug(f"오디오 분할 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return [audio_path]
