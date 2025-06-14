@@ -1,5 +1,5 @@
 """
-유틸리티 함수들
+Utility functions
 """
 
 import os
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def create_output_directory(base_dir="./result", video_title=None):
     """
-    yyyyMMDD_HHmmss_타이틀 형식으로 출력 디렉토리 생성
+    Create output directory in yyyyMMDD_HHmmss_title format
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -32,7 +32,7 @@ def create_output_directory(base_dir="./result", video_title=None):
 
 def extract_timestamps_and_text(metadata):
     """
-    메타데이터에서 타임스탬프와 텍스트 추출
+    Extract timestamps and text from metadata
     """
     timestamps_data = []
 
@@ -59,15 +59,15 @@ def save_subtitle_and_metadata(
     use_ai_correction=True,
 ):
     """
-    자막과 메타데이터를 파일로 저장 (보정 기능 포함)
+    Save subtitles and metadata to files (including correction features)
     """
     try:
-        # 원본 파일들 먼저 저장
+        # Save original files first
         subtitle_path = os.path.join(output_dir, f"{base_filename}.{format}")
         metadata_path = os.path.join(output_dir, f"{base_filename}_metadata.json")
         timestamp_path = os.path.join(output_dir, f"{base_filename}_timestamps.txt")
 
-        # 원본 자막 저장
+        # Save original subtitles
         if format == "txt":
             with open(subtitle_path, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -78,33 +78,33 @@ def save_subtitle_and_metadata(
                 f.write(text)
                 f.write("\n")
 
-        # 원본 메타데이터 저장
+        # Save original metadata
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-        # 원본 타임스탬프 저장
+        # Save original timestamps
         timestamps_data = extract_timestamps_and_text(metadata)
         with open(timestamp_path, "w", encoding="utf-8") as f:
-            f.write("타임스탬프별 자막\n")
+            f.write("Timestamped Subtitles\n")
             f.write("=" * 50 + "\n\n")
             for start_time, end_time, segment_text in timestamps_data:
                 f.write(f"[{start_time} → {end_time}] {segment_text}\n")
 
-        logger.info(f"원본 자막이 저장되었습니다: {subtitle_path}")
-        logger.info(f"원본 메타데이터가 저장되었습니다: {metadata_path}")
-        logger.info(f"원본 타임스탬프가 저장되었습니다: {timestamp_path}")
+        logger.info(f"Original subtitles saved: {subtitle_path}")
+        logger.info(f"Original metadata saved: {metadata_path}")
+        logger.info(f"Original timestamps saved: {timestamp_path}")
 
         corrected_files = None
 
-        # 보정 기능이 활성화된 경우
+        # If correction feature is enabled
         if correction_enabled:
             try:
-                # 텍스트 보정
+                # Text correction
                 corrected_text, corrected_metadata = correct_transcription_text(
                     text, metadata, use_ai=use_ai_correction
                 )
 
-                # 보정된 파일들 저장
+                # Save corrected files
                 corrected_subtitle_path = os.path.join(
                     output_dir, f"{base_filename}_corrected.{format}"
                 )
@@ -115,7 +115,7 @@ def save_subtitle_and_metadata(
                     output_dir, f"{base_filename}_corrected_timestamps.txt"
                 )
 
-                # 보정된 자막 저장
+                # Save corrected subtitles
                 if format == "txt":
                     with open(corrected_subtitle_path, "w", encoding="utf-8") as f:
                         f.write(corrected_text)
@@ -126,16 +126,16 @@ def save_subtitle_and_metadata(
                         f.write(corrected_text)
                         f.write("\n")
 
-                # 보정된 메타데이터 저장
+                # Save corrected metadata
                 with open(corrected_metadata_path, "w", encoding="utf-8") as f:
                     json.dump(corrected_metadata, f, indent=2, ensure_ascii=False)
 
-                # 보정된 타임스탬프 저장
+                # Save corrected timestamps
                 corrected_timestamps_data = extract_timestamps_and_text(
                     corrected_metadata
                 )
                 with open(corrected_timestamp_path, "w", encoding="utf-8") as f:
-                    f.write("타임스탬프별 자막 (보정됨)\n")
+                    f.write("Timestamped Subtitles (Corrected)\n")
                     f.write("=" * 50 + "\n\n")
                     for (
                         start_time,
@@ -152,22 +152,22 @@ def save_subtitle_and_metadata(
                     corrected_timestamp_path,
                 )
 
-                logger.info(f"보정된 자막이 저장되었습니다: {corrected_subtitle_path}")
-                logger.info(f"보정된 메타데이터가 저장되었습니다: {corrected_metadata_path}")
-                logger.info(f"보정된 타임스탬프가 저장되었습니다: {corrected_timestamp_path}")
+                logger.info(f"Corrected subtitles saved: {corrected_subtitle_path}")
+                logger.info(f"Corrected metadata saved: {corrected_metadata_path}")
+                logger.info(f"Corrected timestamps saved: {corrected_timestamp_path}")
 
             except Exception as e:
-                logger.error(f"텍스트 보정 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
-                logger.debug(f"텍스트 보정 상세 오류: {type(e).__name__}: {str(e)}")
+                logger.error(f"Error occurred during text correction: {e}, cause: {e.__cause__ or 'unknown'}")
+                logger.debug(f"Text correction detailed error: {type(e).__name__}: {str(e)}")
                 if e.__cause__:
-                    logger.debug(f"텍스트 보정 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
-                logger.warning("원본 파일만 저장됩니다.")
+                    logger.debug(f"Text correction root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+                logger.warning("Only original files will be saved.")
 
         return subtitle_path, metadata_path, timestamp_path, corrected_files
 
     except Exception as e:
-        logger.error(f"파일 저장 중 오류 발생: {e}, 원인: {e.__cause__ or '알 수 없음'}")
-        logger.debug(f"파일 저장 상세 오류: {type(e).__name__}: {str(e)}")
+        logger.error(f"Error occurred during file saving: {e}, cause: {e.__cause__ or 'unknown'}")
+        logger.debug(f"File saving detailed error: {type(e).__name__}: {str(e)}")
         if e.__cause__:
-            logger.debug(f"파일 저장 근본 원인: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            logger.debug(f"File saving root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return None, None, None, None

@@ -1,6 +1,6 @@
 """
 SOGON Package
-YouTube 영상에서 자막을 추출하고 보정하는 패키지
+Package for extracting and correcting subtitles from YouTube videos
 """
 
 from .downloader import download_youtube_audio

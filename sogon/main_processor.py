@@ -1,5 +1,5 @@
 """
-메인 프로세싱 모듈 - YouTube 링크에서 자막 생성까지의 전체 워크플로우
+Main processing module - Complete workflow from YouTube link to subtitle generation
 """
 
 import os
@@ -22,48 +22,48 @@ def youtube_to_subtitle(
     use_ai_correction=True,
 ):
     """
-    YouTube 링크에서 자막 생성 (보정 기능 포함)
+    Generate subtitles from YouTube link (including correction features)
 
     Args:
         url (str): YouTube URL
-        base_output_dir (str): 기본 출력 디렉토리
-        subtitle_format (str): 자막 형식 (txt, srt)
-        enable_correction (bool): 텍스트 보정 사용 여부
-        use_ai_correction (bool): AI 기반 보정 사용 여부
+        base_output_dir (str): Base output directory
+        subtitle_format (str): Subtitle format (txt, srt)
+        enable_correction (bool): Whether to use text correction
+        use_ai_correction (bool): Whether to use AI-based correction
 
     Returns:
-        tuple: (원본 파일들, 보정된 파일들, 출력 디렉토리)
+        tuple: (original files, corrected files, output directory)
     """
     try:
-        # 먼저 비디오 정보를 가져와서 제목 확인
-        logger.info("YouTube 비디오 정보 가져오는 중...")
+        # First get video information to check title
+        logger.info("Fetching YouTube video information...")
         ydl_opts = {"quiet": True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_title = info.get("title", "unknown")
 
-        # 날짜/시간/제목 형식으로 출력 디렉토리 생성
+        # Create output directory in date/time/title format
         output_dir = create_output_directory(base_output_dir, video_title)
-        logger.info(f"출력 디렉토리 생성: {output_dir}")
+        logger.info(f"Output directory created: {output_dir}")
 
-        logger.info("YouTube에서 오디오 다운로드 중...")
+        logger.info("Downloading audio from YouTube...")
         audio_path = download_youtube_audio(url)
 
         if not audio_path:
-            logger.error("오디오 다운로드에 실패했습니다.")
+            logger.error("Audio download failed.")
             return None, None, None
 
-        logger.info(f"오디오 다운로드 완료: {audio_path}")
-        logger.info("Groq Whisper Turbo로 자막 생성 중...")
+        logger.info(f"Audio download completed: {audio_path}")
+        logger.info("Generating subtitles with Groq Whisper Turbo...")
 
-        # 음성 인식 (메타데이터 포함)
+        # Speech recognition (including metadata)
         subtitle_text, metadata = transcribe_audio(audio_path)
 
         if not subtitle_text:
-            logger.error("음성 인식에 실패했습니다.")
+            logger.error("Speech recognition failed.")
             return None, None, None
 
-        # 자막 및 메타데이터 파일 저장 (보정 포함)
+        # Save subtitle and metadata files (including correction)
         video_name = Path(audio_path).stem
         result = save_subtitle_and_metadata(
             subtitle_text,
@@ -75,7 +75,7 @@ def youtube_to_subtitle(
             use_ai_correction=use_ai_correction,
         )
 
-        # 임시 오디오 파일 삭제
+        # Delete temporary audio file
         try:
             os.remove(audio_path)
             temp_dir = os.path.dirname(audio_path)
@@ -92,5 +92,5 @@ def youtube_to_subtitle(
             return result[:3] if result else None, None, output_dir
 
     except Exception as e:
-        logger.error(f"자막 생성 중 오류 발생: {e}")
+        logger.error(f"Error occurred during subtitle generation: {e}")
         return None, None, None
