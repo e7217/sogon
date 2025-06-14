@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-YouTube subtitle generator (simple CLI interface)
-Refactored version with package structure
+SOGON - Subtitle generator from YouTube URLs or local audio files
+Supports both YouTube video processing and local audio file transcription
 """
 
 import sys
 import json
 import logging
-from sogon import youtube_to_subtitle
+from sogon import process_input_to_subtitle
 
 # Logging configuration
 logging.basicConfig(
@@ -89,27 +89,28 @@ def show_metadata_info(metadata_path):
 def main():
     """Main execution function"""
     logger.debug("Main function started")
-    logger.info("SOGON - YouTube Subtitle Generator")
+    logger.info("SOGON - Subtitle Generator")
+    logger.info("Supports YouTube URLs and local audio files")
     logger.info("=" * 50)
 
-    # Get URL from command line arguments
+    # Get URL or file path from command line arguments
     logger.debug(f"Number of command line arguments: {len(sys.argv)}")
     if len(sys.argv) > 1:
-        url = sys.argv[1]
-        logger.debug(f"URL received from command line: {url}")
+        input_path = sys.argv[1]
+        logger.debug(f"Input received from command line: {input_path}")
     else:
-        # Get URL input from user
+        # Get URL or file path input from user
         logger.debug("Waiting for user input...")
-        url = input("Enter YouTube URL: ").strip()
-        logger.debug(f"URL entered by user: {url}")
+        input_path = input("Enter YouTube URL or audio file path: ").strip()
+        logger.debug(f"Input entered by user: {input_path}")
 
-    # Exit with error message if no URL provided
-    if not url:
-        logger.error("❌ Error: YouTube URL was not provided.")
+    # Exit with error message if no input provided
+    if not input_path:
+        logger.error("❌ Error: YouTube URL or file path was not provided.")
         logger.info("Usage:")
-        logger.info("  python main.py <YouTube_URL>")
-        logger.info("  Or enter URL after running the program.")
-        logger.debug("Program terminated due to empty URL")
+        logger.info("  python main.py <YouTube_URL_or_file_path>")
+        logger.info("  Or enter URL/file path after running the program.")
+        logger.debug("Program terminated due to empty input")
         return
 
     # Subtitle format (default: txt)
@@ -126,7 +127,7 @@ def main():
     logger.debug(f"Correction settings: enable_correction={enable_correction}, use_ai_correction={use_ai_correction}")
 
     logger.info("\nStarting subtitle generation...")
-    logger.info(f"URL: {url}")
+    logger.info(f"Input: {input_path}")
     logger.info(f"Format: {subtitle_format.upper()}")
     logger.info(f"Base output directory: {base_output_dir}")
     logger.info(f"Text correction: {'enabled' if enable_correction else 'disabled'}")
@@ -135,8 +136,8 @@ def main():
 
     try:
         # Generate subtitles (including correction features)
-        original_files, corrected_files, actual_output_dir = youtube_to_subtitle(
-            url, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+        original_files, corrected_files, actual_output_dir = process_input_to_subtitle(
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
         )
 
         logger.info(f"\n📁 Actual output directory: {actual_output_dir}")
