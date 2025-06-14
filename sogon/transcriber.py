@@ -54,16 +54,33 @@ def transcribe_audio(audio_file_path, api_key=None):
         all_metadata = []
 
         # Calculate chunk start times for timestamp offset
+        # Load each chunk to get actual durations (not assuming equal duration)
         chunk_start_times = []
         if len(audio_chunks) > 1:
-            # Load original audio to calculate chunk boundaries
             from pydub import AudioSegment
-            full_audio = AudioSegment.from_file(audio_file_path)
-            chunk_duration_ms = len(full_audio) // len(audio_chunks)
+            current_time_seconds = 0.0
             
-            for i in range(len(audio_chunks)):
-                start_time_seconds = (i * chunk_duration_ms) / 1000
-                chunk_start_times.append(start_time_seconds)
+            for i, chunk_path in enumerate(audio_chunks):
+                chunk_start_times.append(current_time_seconds)
+                
+                # Load each chunk to get its actual duration
+                try:
+                    chunk_audio = AudioSegment.from_file(chunk_path)
+                    chunk_duration_seconds = len(chunk_audio) / 1000.0
+                    current_time_seconds += chunk_duration_seconds
+                    logger.debug(f"Chunk {i+1} duration: {chunk_duration_seconds:.2f}s, starts at: {chunk_start_times[i]:.2f}s")
+                except Exception as e:
+                    logger.warning(f"Could not load chunk {i+1} for duration calculation: {e}")
+                    # Fallback: estimate based on equal division
+                    if i == 0:
+                        try:
+                            full_audio = AudioSegment.from_file(audio_file_path)
+                            estimated_chunk_duration = len(full_audio) / len(audio_chunks) / 1000.0
+                            current_time_seconds += estimated_chunk_duration
+                            logger.debug(f"Using estimated duration for chunk {i+1}: {estimated_chunk_duration:.2f}s")
+                        except Exception:
+                            logger.warning("Could not estimate chunk duration, using default")
+                            current_time_seconds += 60.0  # Default 1 minute per chunk
         else:
             chunk_start_times = [0.0]
             
