@@ -1,10 +1,10 @@
-# 🎥 YouTube 자막 생성기 (Groq Whisper Turbo)
+# 🎥 동영상 자막 생성기 (Groq Whisper Turbo)
 
-YouTube 링크에서 음성을 추출하고 Groq Whisper Turbo를 이용해 자막을 생성하는 AI 기반 자동화 도구입니다.
+동영상 URL이나 미디어 파일에서 음성을 추출하고 Groq Whisper Turbo를 이용해 자막을 생성하는 AI 기반 자동화 도구입니다.
 
 ## ✨ 주요 기능
 
-- 🎬 **YouTube 오디오 자동 추출**: yt-dlp를 통한 고품질 오디오 다운로드
+- 🎬 **유연한 오디오 추출**: yt-dlp를 통한 동영상 URL이나 로컬 미디어 파일에서 고품질 오디오 추출
 - 🤖 **AI 음성인식**: Groq Whisper Turbo로 정확한 한국어 음성인식
 - 📏 **대용량 파일 처리**: 24MB 제한 자동 우회 (파일 분할)
 - ⏰ **정밀한 타임스탬프**: HH:mm:ss.SSS 형식의 세그먼트별 시간 정보
@@ -34,21 +34,26 @@ GROQ_API_KEY=your_groq_api_key_here
 ### 3. 실행
 
 ```bash
+# 동영상 URL 처리
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# 로컬 미디어 파일 처리
+python main.py "/path/to/video/file.mp4"
 ```
 
 ## 📋 시스템 아키텍처
 
 ```
-YouTube URL → 오디오 추출 → 음성인식 → 텍스트 보정 → 파일 저장
-     ↓           ↓            ↓          ↓          ↓
-   yt-dlp    ffmpeg     Groq Whisper   AI보정    result/
+동영상 URL/파일 → 오디오 추출 → 음성인식 → 텍스트 보정 → 파일 저장
+      ↓             ↓            ↓          ↓          ↓
+    yt-dlp      ffmpeg     Groq Whisper   AI보정    result/
 ```
 
 ## 🔄 처리 단계
 
-### 1단계: YouTube 오디오 추출
+### 1단계: 오디오 추출
 - **도구**: `yt-dlp` + `ffmpeg`
+- **입력**: 동영상 URL (YouTube 등) 또는 로컬 미디어 파일
 - **형식**: WAV (고품질 오디오)
 - **위치**: 임시 디렉토리
 
@@ -109,7 +114,7 @@ result/
 
 |  컴포넌트 | 도구/라이브러리 | 역할 |
 |---------|----------------|------|
-| **오디오 추출** | `yt-dlp` + `ffmpeg` | YouTube → WAV 변환 |
+| **오디오 추출** | `yt-dlp` + `ffmpeg` | 동영상 URL/파일 → WAV 변환 |
 | **오디오 처리** | `pydub` | 파일 분할, 포맷 변환 |
 | **음성인식** | `Groq Whisper Turbo` | 음성 → 텍스트 + 메타데이터 |
 | **AI 보정** | `Groq LLM (llama-3.3-70b)` | 텍스트 교정 |
@@ -181,8 +186,11 @@ if file_size_mb > 24:
 
 ### 기본 사용
 ```bash
-# 단일 영상 처리
-python main.py "YouTube_URL"
+# 동영상 URL 처리
+python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# 로컬 미디어 파일 처리
+python main.py "/path/to/video.mp4"
 ```
 
 ### 명령행 옵션
@@ -192,7 +200,7 @@ python main.py
 
 # 환경변수로 API 키 설정
 export GROQ_API_KEY=your_api_key_here
-python main.py "YouTube_URL"
+python main.py "동영상_URL_또는_파일_경로"
 ```
 
 ## 📋 요구사항
@@ -200,7 +208,7 @@ python main.py "YouTube_URL"
 ### 시스템 요구사항
 - Python 3.12+
 - ffmpeg (오디오 처리용)
-- 인터넷 연결 (YouTube 다운로드 및 Groq API)
+- 인터넷 연결 (동영상 URL 다운로드 및 Groq API)
 
 ### Python 패키지
 ```toml
@@ -267,4 +275,4 @@ brew install ffmpeg
 
 ---
 
-**⚡ 빠르고 정확한 YouTube 자막 생성을 경험해보세요\!**
+**⚡ 빠르고 정확한 동영상 자막 생성을 경험해보세요\!**

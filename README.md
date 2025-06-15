@@ -1,12 +1,12 @@
-# 🎥 YouTube Subtitle Generator (Groq Whisper Turbo)
+# 🎥 Video Subtitle Generator (Groq Whisper Turbo)
 
-An AI-powered automation tool that extracts audio from YouTube links and generates subtitles using Groq Whisper Turbo.
+An AI-powered automation tool that extracts audio from video URLs or media files and generates subtitles using Groq Whisper Turbo.
 
 > **[한국어](README_ko.md)** 📖
 
 ## ✨ Key Features
 
-- 🎬 **Automatic YouTube Audio Extraction**: High-quality audio download via yt-dlp
+- 🎬 **Flexible Audio Extraction**: High-quality audio extraction from video URLs or local media files via yt-dlp
 - 🤖 **AI Speech Recognition**: Accurate Korean speech recognition with Groq Whisper Turbo
 - 📏 **Large File Processing**: Automatic workaround for 24MB limit (file splitting)
 - ⏰ **Precise Timestamps**: Segment-level time information in HH:mm:ss.SSS format
@@ -36,21 +36,26 @@ GROQ_API_KEY=your_groq_api_key_here
 ### 3. Run
 
 ```bash
+# Process video URL
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Process local media file
+python main.py "/path/to/video/file.mp4"
 ```
 
 ## 📋 System Architecture
 
 ```
-YouTube URL → Audio Extract → Speech Recognition → Text Correction → File Save
-     ↓           ↓                ↓                 ↓              ↓
-   yt-dlp    ffmpeg        Groq Whisper         AI Correction   result/
+Video URL/File → Audio Extract → Speech Recognition → Text Correction → File Save
+      ↓             ↓                ↓                 ↓              ↓
+    yt-dlp      ffmpeg        Groq Whisper         AI Correction   result/
 ```
 
 ## 🔄 Processing Steps
 
-### Step 1: YouTube Audio Extraction
+### Step 1: Audio Extraction
 - **Tools**: `yt-dlp` + `ffmpeg`
+- **Input**: Video URLs (YouTube, etc.) or local media files
 - **Format**: WAV (high-quality audio)
 - **Location**: Temporary directory
 
@@ -111,7 +116,7 @@ Subtitle with Timestamps (Corrected)
 
 |  Component | Tool/Library | Role |
 |-----------|--------------|------|
-| **Audio Extraction** | `yt-dlp` + `ffmpeg` | YouTube → WAV conversion |
+| **Audio Extraction** | `yt-dlp` + `ffmpeg` | Video URL/File → WAV conversion |
 | **Audio Processing** | `pydub` | File splitting, format conversion |
 | **Speech Recognition** | `Groq Whisper Turbo` | Speech → Text + metadata |
 | **AI Correction** | `Groq LLM (llama-3.3-70b)` | Text correction |
@@ -183,8 +188,11 @@ if file_size_mb > 24:
 
 ### Basic Usage
 ```bash
-# Process single video
-python main.py "YouTube_URL"
+# Process video URL
+python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Process local media file
+python main.py "/path/to/video.mp4"
 ```
 
 ### Command Line Options
@@ -194,7 +202,7 @@ python main.py
 
 # Set API key via environment variable
 export GROQ_API_KEY=your_api_key_here
-python main.py "YouTube_URL"
+python main.py "video_url_or_file_path"
 ```
 
 ## 📋 Requirements
@@ -202,7 +210,7 @@ python main.py "YouTube_URL"
 ### System Requirements
 - Python 3.12+
 - ffmpeg (for audio processing)
-- Internet connection (for YouTube download and Groq API)
+- Internet connection (for video URL download and Groq API)
 
 ### Python Packages
 ```toml
@@ -269,4 +277,4 @@ If you encounter any issues or have questions, please contact us through GitHub 
 
 ---
 
-**⚡ Experience fast and accurate YouTube subtitle generation\!**
+**⚡ Experience fast and accurate video subtitle generation\!**
