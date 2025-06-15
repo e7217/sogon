@@ -3,11 +3,15 @@ Tests for API main module
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
+import tempfile
+import json
+from unittest.mock import patch, MagicMock, mock_open
 from fastapi.testclient import TestClient
 from datetime import datetime
+from pathlib import Path
+import io
 
-from sogon.api.main import app, HealthResponse
+from sogon.api.main import app, HealthResponse, TranscribeRequest, TranscribeResponse, JobStatusResponse, jobs
 
 
 class TestAPIMain(unittest.TestCase):
@@ -152,6 +156,287 @@ class TestAPIMain(unittest.TestCase):
         # This is tricky to test directly, but we can verify the handler exists
         # by checking app exception handlers
         self.assertIn(Exception, app.exception_handlers)
+
+
+class TestTranscriptionAPI(unittest.TestCase):
+    """Test cases for transcription API endpoints"""
+
+    def setUp(self):
+        """Set up test client and clear jobs"""
+        self.client = TestClient(app)
+        jobs.clear()  # Clear jobs between tests
+
+    def tearDown(self):
+        """Clean up after tests"""
+        jobs.clear()
+
+    def test_transcribe_url_success(self):
+        """Test successful URL transcription request"""
+        response = self.client.post(
+            "/api/v1/transcribe/url",
+            json={
+                "url": "https://www.youtube.com/watch?v=test",
+                "enable_correction": True,
+                "use_ai_correction": True,
+                "subtitle_format": "txt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertIn("job_id", data)
+        self.assertEqual(data["status"], "pending")
+        self.assertEqual(data["message"], "Transcription job created successfully")
+        
+        # Verify job was created (status might change due to background task)
+        job_id = data["job_id"]
+        self.assertIn(job_id, jobs)
+        self.assertEqual(jobs[job_id]["input_type"], "url")
+        self.assertIn(jobs[job_id]["status"], ["pending", "processing", "completed", "failed"])
+
+    def test_transcribe_url_invalid_url(self):
+        """Test URL transcription with invalid URL"""
+        response = self.client.post(
+            "/api/v1/transcribe/url",
+            json={
+                "url": "not-a-valid-url",
+                "enable_correction": True,
+                "use_ai_correction": True,
+                "subtitle_format": "txt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+    @patch('sogon.api.main.config')
+    @patch('builtins.open', new_callable=mock_open)
+    @patch('sogon.api.main.Path')
+    def test_transcribe_upload_success(self, mock_path, mock_file, mock_config):
+        """Test successful file upload transcription"""
+        mock_config.base_output_dir = "/test/output"
+        mock_path_instance = MagicMock()
+        mock_path_instance.mkdir = MagicMock()
+        mock_path.return_value = mock_path_instance
+        
+        # Create test file content
+        test_file_content = b"test audio file content"
+        
+        response = self.client.post(
+            "/api/v1/transcribe/upload",
+            files={"file": ("test.mp3", io.BytesIO(test_file_content), "audio/mpeg")},
+            data={
+                "enable_correction": "true",
+                "use_ai_correction": "true",
+                "subtitle_format": "txt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertIn("job_id", data)
+        self.assertEqual(data["status"], "pending")
+        self.assertEqual(data["message"], "File uploaded and transcription job created successfully")
+
+    def test_transcribe_upload_no_file(self):
+        """Test file upload without file"""
+        response = self.client.post(
+            "/api/v1/transcribe/upload",
+            data={
+                "enable_correction": "true",
+                "use_ai_correction": "true",
+                "subtitle_format": "txt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+    def test_get_job_status_success(self):
+        """Test getting job status for existing job"""
+        # Create a test job
+        job_id = "test-job-123"
+        jobs[job_id] = {
+            "status": "processing",
+            "progress": 50,
+            "input_type": "url",
+            "input_value": "https://test.com"
+        }
+
+        response = self.client.get(f"/api/v1/jobs/{job_id}")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["job_id"], job_id)
+        self.assertEqual(data["status"], "processing")
+        self.assertEqual(data["progress"], 50)
+
+    def test_get_job_status_not_found(self):
+        """Test getting job status for non-existent job"""
+        response = self.client.get("/api/v1/jobs/non-existent-job")
+
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertEqual(data["detail"], "Job not found")
+
+    @patch('sogon.api.main.FileResponse')
+    @patch('sogon.api.main.Path')
+    def test_download_result_success(self, mock_path, mock_file_response):
+        """Test downloading result file for completed job"""
+        # Create a completed job
+        job_id = "completed-job-123"
+        jobs[job_id] = {
+            "status": "completed",
+            "result": {
+                "original_files": ["/path/to/result.txt", "/path/to/metadata.json"],
+                "corrected_files": ["/path/to/corrected.txt", "/path/to/corrected_metadata.json"],
+                "output_directory": "/output/dir"
+            }
+        }
+
+        # Mock file existence
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.name = "result.txt"
+        mock_path.return_value = mock_path_instance
+        
+        # Mock FileResponse
+        mock_file_response.return_value = MagicMock()
+
+        response = self.client.get(f"/api/v1/jobs/{job_id}/download?file_type=original")
+
+        # The endpoint should call FileResponse
+        mock_file_response.assert_called_once()
+
+    def test_download_result_job_not_found(self):
+        """Test downloading result for non-existent job"""
+        response = self.client.get("/api/v1/jobs/non-existent/download")
+
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertEqual(data["detail"], "Job not found")
+
+    def test_download_result_job_not_completed(self):
+        """Test downloading result for incomplete job"""
+        job_id = "processing-job-123"
+        jobs[job_id] = {
+            "status": "processing",
+            "progress": 50
+        }
+
+        response = self.client.get(f"/api/v1/jobs/{job_id}/download")
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data["detail"], "Job not completed yet")
+
+    def test_delete_job_success(self):
+        """Test deleting existing job"""
+        job_id = "test-job-to-delete"
+        jobs[job_id] = {
+            "status": "completed",
+            "input_type": "url",
+            "input_value": "https://test.com"
+        }
+
+        response = self.client.delete(f"/api/v1/jobs/{job_id}")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["message"], "Job deleted successfully")
+        
+        # Verify job was deleted
+        self.assertNotIn(job_id, jobs)
+
+    def test_delete_job_not_found(self):
+        """Test deleting non-existent job"""
+        response = self.client.delete("/api/v1/jobs/non-existent")
+
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertEqual(data["detail"], "Job not found")
+
+    @patch('sogon.api.main.Path')
+    def test_delete_job_with_file_cleanup(self, mock_path):
+        """Test deleting job with uploaded file cleanup"""
+        job_id = "test-job-with-file"
+        jobs[job_id] = {
+            "status": "completed",
+            "input_type": "file",
+            "input_value": "/uploads/test-file.mp3"
+        }
+
+        # Mock file operations
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.unlink = MagicMock()
+        mock_path.return_value = mock_path_instance
+
+        response = self.client.delete(f"/api/v1/jobs/{job_id}")
+
+        self.assertEqual(response.status_code, 200)
+        mock_path_instance.unlink.assert_called_once()
+
+
+class TestRequestResponseModels(unittest.TestCase):
+    """Test cases for request/response models"""
+
+    def test_transcribe_request_model(self):
+        """Test TranscribeRequest model validation"""
+        valid_data = {
+            "url": "https://www.youtube.com/watch?v=test",
+            "enable_correction": True,
+            "use_ai_correction": False,
+            "subtitle_format": "srt"
+        }
+        
+        request = TranscribeRequest(**valid_data)
+        self.assertEqual(str(request.url), "https://www.youtube.com/watch?v=test")
+        self.assertTrue(request.enable_correction)
+        self.assertFalse(request.use_ai_correction)
+        self.assertEqual(request.subtitle_format, "srt")
+
+    def test_transcribe_request_defaults(self):
+        """Test TranscribeRequest model with default values"""
+        minimal_data = {
+            "url": "https://example.com/video"
+        }
+        
+        request = TranscribeRequest(**minimal_data)
+        self.assertTrue(request.enable_correction)  # Default
+        self.assertTrue(request.use_ai_correction)  # Default
+        self.assertEqual(request.subtitle_format, "txt")  # Default
+
+    def test_transcribe_response_model(self):
+        """Test TranscribeResponse model"""
+        data = {
+            "job_id": "test-123",
+            "status": "pending",
+            "message": "Job created"
+        }
+        
+        response = TranscribeResponse(**data)
+        self.assertEqual(response.job_id, "test-123")
+        self.assertEqual(response.status, "pending")
+        self.assertEqual(response.message, "Job created")
+
+    def test_job_status_response_model(self):
+        """Test JobStatusResponse model"""
+        data = {
+            "job_id": "test-456",
+            "status": "completed",
+            "progress": 100,
+            "result": {"files": ["test.txt"]},
+            "error": None
+        }
+        
+        response = JobStatusResponse(**data)
+        self.assertEqual(response.job_id, "test-456")
+        self.assertEqual(response.status, "completed")
+        self.assertEqual(response.progress, 100)
+        self.assertEqual(response.result, {"files": ["test.txt"]})
+        self.assertIsNone(response.error)
 
 
 if __name__ == '__main__':
