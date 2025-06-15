@@ -11,6 +11,32 @@ from .downloader import split_audio_by_size
 logger = logging.getLogger(__name__)
 
 
+def _convert_to_dict(obj):
+    """Convert segment/word object to dictionary safely"""
+    try:
+        if hasattr(obj, '__dict__'):
+            return vars(obj).copy()
+        elif hasattr(obj, 'copy') and callable(getattr(obj, 'copy', None)):
+            return obj.copy()
+        else:
+            return dict(obj)
+    except (TypeError, ValueError, AttributeError):
+        return dict(obj) if hasattr(obj, '__iter__') else {}
+
+
+def _adjust_timestamps(adjusted_obj, original_obj, offset):
+    """Adjust start/end timestamps by adding offset"""
+    for attr in ['start', 'end']:
+        timestamp = getattr(original_obj, attr, None)
+        if timestamp is None and hasattr(original_obj, '__getitem__'):
+            try:
+                timestamp = original_obj[attr]
+            except (KeyError, TypeError):
+                continue
+        if timestamp is not None:
+            adjusted_obj[attr] = timestamp + offset
+
+
 def transcribe_audio(audio_file_path, api_key=None):
     """
     Convert audio file to text using Groq Whisper Turbo
@@ -131,111 +157,15 @@ def transcribe_audio(audio_file_path, api_key=None):
                 # Adjust segment timestamps with chunk offset
                 adjusted_segments = []
                 for segment in segments:
-                    # Safely convert to dictionary for consistent handling
-                    adjusted_segment = None
-                    try:
-                        if hasattr(segment, '__dict__'):
-                            # Object with attributes - convert to dict
-                            adjusted_segment = vars(segment).copy()
-                        elif hasattr(segment, 'copy') and callable(getattr(segment, 'copy', None)):
-                            # Dictionary or dict-like object with copy method
-                            adjusted_segment = segment.copy()
-                        elif hasattr(segment, '__getitem__') and hasattr(segment, 'keys'):
-                            # Dict-like object without copy method
-                            adjusted_segment = dict(segment)
-                        else:
-                            # Fallback to dict conversion
-                            adjusted_segment = dict(segment)
-                    except (TypeError, ValueError, AttributeError) as e:
-                        logger.warning(f"Could not convert segment to dict: {e}, creating empty dict")
-                        adjusted_segment = {}
-                    
-                    # Safely extract timestamps - check both attribute and key access
-                    start_time = None
-                    end_time = None
-                    
-                    # Try attribute access first
-                    try:
-                        if hasattr(segment, 'start'):
-                            start_time = segment.start
-                        if hasattr(segment, 'end'):
-                            end_time = segment.end
-                    except AttributeError:
-                        pass
-                    
-                    # Try key access only if object supports it
-                    if start_time is None or end_time is None:
-                        try:
-                            # Check if object supports 'in' operator safely
-                            if hasattr(segment, '__contains__'):
-                                if start_time is None and 'start' in segment:
-                                    start_time = segment['start']
-                                if end_time is None and 'end' in segment:
-                                    end_time = segment['end']
-                        except (TypeError, KeyError):
-                            pass
-                    
-                    # Apply timestamp adjustments
-                    if start_time is not None:
-                        adjusted_segment['start'] = start_time + chunk_start_time
-                    if end_time is not None:
-                        adjusted_segment['end'] = end_time + chunk_start_time
-                        
+                    adjusted_segment = _convert_to_dict(segment)
+                    _adjust_timestamps(adjusted_segment, segment, chunk_start_time)
                     adjusted_segments.append(adjusted_segment)
                 
                 # Adjust word timestamps with chunk offset
                 adjusted_words = []
                 for word in words:
-                    # Safely convert to dictionary for consistent handling
-                    adjusted_word = None
-                    try:
-                        if hasattr(word, '__dict__'):
-                            # Object with attributes - convert to dict
-                            adjusted_word = vars(word).copy()
-                        elif hasattr(word, 'copy') and callable(getattr(word, 'copy', None)):
-                            # Dictionary or dict-like object with copy method
-                            adjusted_word = word.copy()
-                        elif hasattr(word, '__getitem__') and hasattr(word, 'keys'):
-                            # Dict-like object without copy method
-                            adjusted_word = dict(word)
-                        else:
-                            # Fallback to dict conversion
-                            adjusted_word = dict(word)
-                    except (TypeError, ValueError, AttributeError) as e:
-                        logger.warning(f"Could not convert word to dict: {e}, creating empty dict")
-                        adjusted_word = {}
-                    
-                    # Safely extract timestamps - check both attribute and key access
-                    start_time = None
-                    end_time = None
-                    
-                    # Try attribute access first
-                    try:
-                        if hasattr(word, 'start'):
-                            start_time = word.start
-                        if hasattr(word, 'end'):
-                            end_time = word.end
-                    except AttributeError:
-                        pass
-                    
-                    # Try key access only if object supports it
-                    if start_time is None or end_time is None:
-                        try:
-                            # Check if object supports 'in' operator safely
-                            if hasattr(word, '__contains__'):
-                                if start_time is None and 'start' in word:
-                                    start_time = word['start']
-                                if end_time is None and 'end' in word:
-                                    end_time = word['end']
-                        except (TypeError, KeyError):
-                            pass
-                    
-                    # Apply timestamp adjustments
-                    if start_time is not None:
-                        adjusted_word['start'] = start_time + chunk_start_time
-                    if end_time is not None:
-                        adjusted_word['end'] = end_time + chunk_start_time
-                        
+                    adjusted_word = _convert_to_dict(word)
+                    _adjust_timestamps(adjusted_word, word, chunk_start_time)
                     adjusted_words.append(adjusted_word)
                 
                 metadata = {
