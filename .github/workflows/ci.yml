@@ -18,20 +18,6 @@ jobs:
         uses: actions/labeler@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Label PR size
-        uses: pascalgn/size-label-action@v0.4.3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          sizes: >
-            {
-              "0": "size/XS",
-              "20": "size/S", 
-              "50": "size/M",
-              "100": "size/L",
-              "500": "size/XL"
-            }
 
   test:
     runs-on: ubuntu-latest
