@@ -59,6 +59,7 @@ def transcribe_audio(audio_file_path, api_key=None):
         if len(audio_chunks) > 1:
             from pydub import AudioSegment
             current_time_seconds = 0.0
+            estimated_chunk_duration = None  # Cache estimated duration for reuse
             
             for i, chunk_path in enumerate(audio_chunks):
                 chunk_start_times.append(current_time_seconds)
@@ -72,15 +73,18 @@ def transcribe_audio(audio_file_path, api_key=None):
                 except Exception as e:
                     logger.warning(f"Could not load chunk {i+1} for duration calculation: {e}")
                     # Fallback: estimate based on equal division
-                    if i == 0:
+                    if estimated_chunk_duration is None:
+                        # Calculate estimated duration only once
                         try:
                             full_audio = AudioSegment.from_file(audio_file_path)
                             estimated_chunk_duration = len(full_audio) / len(audio_chunks) / 1000.0
-                            current_time_seconds += estimated_chunk_duration
-                            logger.debug(f"Using estimated duration for chunk {i+1}: {estimated_chunk_duration:.2f}s")
+                            logger.debug(f"Calculated estimated chunk duration: {estimated_chunk_duration:.2f}s")
                         except Exception:
                             logger.warning("Could not estimate chunk duration, using default")
-                            current_time_seconds += 60.0  # Default 1 minute per chunk
+                            estimated_chunk_duration = 60.0  # Default 1 minute per chunk
+                    
+                    current_time_seconds += estimated_chunk_duration
+                    logger.debug(f"Using estimated duration for chunk {i+1}: {estimated_chunk_duration:.2f}s")
         else:
             chunk_start_times = [0.0]
             
