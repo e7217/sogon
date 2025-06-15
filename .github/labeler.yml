@@ -1,27 +1,29 @@
-bug:
-  - changed-files:
-    - any-glob-to-any-file: ['**/bug/**', '**/fix/**', '**/*bug*', '**/*fix*']
-
-enhancement:
-  - changed-files:
-    - any-glob-to-any-file: ['**/feat/**', '**/feature/**', '**/*feat*', '**/*feature*', '**/*enhancement*']
-
+# Documentation changes
 documentation:
   - changed-files:
-    - any-glob-to-any-file: ['**/*.md', '**/docs/**', '**/README*', '**/*doc*']
+    - any-glob-to-any-file: ['**/*.md', '**/docs/**', '**/README*']
 
+# Dependency updates
 dependencies:
   - changed-files:
     - any-glob-to-any-file: ['**/pyproject.toml', '**/uv.lock', '**/requirements*.txt', '**/package.json', '**/yarn.lock', '**/Pipfile*']
 
+# Test files
 tests:
   - changed-files:
-    - any-glob-to-any-file: ['**/test/**', '**/tests/**', '**/*test*.py', '**/*_test.py', '**/test_*.py']
+    - any-glob-to-any-file: ['**/test/**', '**/tests/**', '**/test_*.py', '**/*_test.py']
 
-refactor:
-  - changed-files:
-    - any-glob-to-any-file: ['**/*refactor*']
-
+# CI/CD workflows
 ci:
   - changed-files:
-    - any-glob-to-any-file: ['.github/**', '**/workflows/**', '**/.github/**', '**/ci/**']
+    - any-glob-to-any-file: ['.github/**', '**/workflows/**']
+
+# API related changes
+api:
+  - changed-files:
+    - any-glob-to-any-file: ['**/api/**', '**/api_*.py', '**/*api*.py']
+
+# Configuration files
+config:
+  - changed-files:
+    - any-glob-to-any-file: ['**/*.toml', '**/*.yml', '**/*.yaml', '**/*.json', '**/*.ini', '**/*.cfg', '**/.env*']
