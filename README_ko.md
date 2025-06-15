@@ -1,26 +1,23 @@
-# 🎥 동영상 자막 생성기 (Groq Whisper Turbo)
+# 동영상 자막 생성기 (Groq Whisper Turbo)
 
 동영상 URL이나 미디어 파일에서 음성을 추출하고 Groq Whisper Turbo를 이용해 자막을 생성하는 AI 기반 자동화 도구입니다.
 
-## ✨ 주요 기능
+## 주요 기능
 
-- 🎬 **유연한 오디오 추출**: yt-dlp를 통한 동영상 URL이나 로컬 미디어 파일에서 고품질 오디오 추출
-- 🤖 **AI 음성인식**: Groq Whisper Turbo로 정확한 한국어 음성인식
-- 📏 **대용량 파일 처리**: 24MB 제한 자동 우회 (파일 분할)
-- ⏰ **정밀한 타임스탬프**: HH:mm:ss.SSS 형식의 세그먼트별 시간 정보
-- 🧠 **지능형 텍스트 보정**: 패턴 기반 + AI 기반 이중 보정
-- 📁 **체계적인 출력**: 원본/보정본 분리 저장
+- **유연한 오디오 추출**: yt-dlp를 통한 동영상 URL이나 로컬 미디어 파일에서 고품질 오디오 추출
+- **AI 음성인식**: Groq Whisper Turbo로 정확한 한국어 음성인식
+- **대용량 파일 처리**: 24MB 제한 자동 우회 (파일 분할)
+- **정밀한 타임스탬프**: HH:mm:ss.SSS 형식의 세그먼트별 시간 정보
+- **지능형 텍스트 보정**: 패턴 기반 + AI 기반 이중 보정
+- **체계적인 출력**: 원본/보정본 분리 저장
 
-## 🚀 빠른 시작
+## 빠른 시작
 
 ### 1. 환경 설정
 
 ```bash
 # 의존성 설치
 uv sync
-
-# 또는 pip 사용시
-pip install groq python-dotenv yt-dlp pydub
 ```
 
 ### 2. API 키 설정
@@ -41,7 +38,7 @@ python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 python main.py "/path/to/video/file.mp4"
 ```
 
-## 📋 시스템 아키텍처
+## 시스템 아키텍처
 
 ```
 동영상 URL/파일 → 오디오 추출 → 음성인식 → 텍스트 보정 → 파일 저장
@@ -49,44 +46,15 @@ python main.py "/path/to/video/file.mp4"
     yt-dlp      ffmpeg     Groq Whisper   AI보정    result/
 ```
 
-## 🔄 처리 단계
+## 처리 단계
 
-### 1단계: 오디오 추출
-- **도구**: `yt-dlp` + `ffmpeg`
-- **입력**: 동영상 URL (YouTube 등) 또는 로컬 미디어 파일
-- **형식**: WAV (고품질 오디오)
-- **위치**: 임시 디렉토리
+1. **오디오 추출**: yt-dlp + ffmpeg로 동영상 URL/파일에서 오디오 추출
+2. **파일 처리**: 24MB API 제한에 맞춰 대용량 파일 분할
+3. **음성인식**: Groq Whisper Turbo로 한국어 텍스트 처리
+4. **텍스트 보정**: 패턴 기반 및 AI 기반 보정 적용
+5. **출력 생성**: 원본/보정본 타임스탬프와 함께 저장
 
-### 2단계: 파일 크기 최적화
-- **제한**: Groq API 24MB 제한
-- **방식**: 시간 기준 자동 분할
-- **도구**: `pydub`
-
-### 3단계: AI 음성인식
-- **API**: Groq Whisper Turbo (`whisper-large-v3-turbo`)
-- **언어**: 한국어 최적화
-- **출력**: 텍스트 + 타임스탬프 + 신뢰도 메타데이터
-
-### 4단계: 텍스트 보정
-#### 4-1. 패턴 기반 보정
-```python
-# 일반적인 음성인식 오류 패턴 자동 수정
-'PAST API' → 'FastAPI'
-'보커' → '도커'
-'제미나이' → 'Gemini'
-```
-
-#### 4-2. AI 기반 보정
-- **모델**: `llama-3.3-70b-versatile`
-- **기능**: 문맥 이해 기반 지능형 교정
-- **처리**: 기술 용어, 문법, 의미 일관성 수정
-
-#### 4-3. 타임스탬프 정렬
-- 시간순 자동 정렬
-- 겹치는 구간 수정
-- HH:mm:ss.SSS 형식 통일
-
-## 📁 출력 파일 구조
+## 출력 파일 구조
 
 **날짜/시간/제목별 정리:**
 ```
@@ -110,7 +78,7 @@ result/
 [00:00:12.839 → 00:00:14.039] 이번에 4번까지 하고, 5번 찍었고 올려야 되는데, 쉽지 않더라고요.
 ```
 
-## ⚙️ 기술 스택
+## 기술 스택
 
 |  컴포넌트 | 도구/라이브러리 | 역할 |
 |---------|----------------|------|
@@ -120,29 +88,11 @@ result/
 | **AI 보정** | `Groq LLM (llama-3.3-70b)` | 텍스트 교정 |
 | **환경관리** | `python-dotenv` | API 키 관리 |
 
-## 📊 메타데이터 구조
+## 출력 파일
 
-```json
-{
-  "chunk_number": 1,
-  "total_chunks": 3,
-  "language": "Korean",
-  "duration": 117.96,
-  "segments": [
-    {
-      "start": 0.0,
-      "end": 6.0,
-      "text": "안녕하세요. 사실 비주얼 스토리 이어 쓰기 시리즈를 계속 하려고 하는데,",
-      "tokens": [50365, 38962, 9820, 13, ...],
-      "avg_logprob": -0.4902137,
-      "compression_ratio": 0.6944444,
-      "no_speech_prob": 1.5166007e-10
-    }
-  ]
-}
-```
+도구는 원본과 보정본 버전의 타임스탬프와 메타데이터를 포함한 체계적인 출력 파일을 생성합니다.
 
-## 🛠️ 고급 기능
+## 고급 기능
 
 ### 기존 파일 보정
 ```python
@@ -167,22 +117,13 @@ youtube_to_subtitle(
 )
 ```
 
-## 🔧 에러 처리
+## 에러 처리
 
-### 파일 크기 제한 자동 처리
-```python
-# 24MB 초과 시 자동 분할
-if file_size_mb > 24:
-    chunks = split_audio_by_size(audio_path, max_size_mb=24)
-    # 각 청크별로 개별 처리 후 결합
-```
-
-### API 오류 복구
-- Groq API 호출 실패 시 부분 결과 저장
-- 네트워크 오류 시 재시도 로직
+- 대용량 파일에 대한 자동 분할 (>24MB)
+- 실패 시 부분 결과 저장
 - 임시 파일 자동 정리
 
-## 💡 사용 예시
+## 사용 예시
 
 ### 기본 사용
 ```bash
@@ -193,17 +134,8 @@ python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 python main.py "/path/to/video.mp4"
 ```
 
-### 명령행 옵션
-```bash
-# URL 없이 실행 시 테스트 URL 사용
-python main.py
 
-# 환경변수로 API 키 설정
-export GROQ_API_KEY=your_api_key_here
-python main.py "동영상_URL_또는_파일_경로"
-```
-
-## 📋 요구사항
+## 요구사항
 
 ### 시스템 요구사항
 - Python 3.12+
@@ -221,47 +153,17 @@ dependencies = [
 ]
 ```
 
-## 🐛 문제 해결
+## 문제 해결
 
-### ffmpeg 설치
-```bash
-# Ubuntu/Debian
-sudo apt-get install ffmpeg
+- **ffmpeg**: 패키지 매니저로 설치 또는 공식 사이트에서 다운로드
+- **API 키**: `.env` 파일에 유효한 Groq API 키 설정
+- **네트워크 문제**: 안정적인 인터넷 연결 확인
 
-# macOS
-brew install ffmpeg
-
-# Windows
-# https://ffmpeg.org/download.html 에서 다운로드
-```
-
-### API 키 오류
-- Groq 콘솔에서 유효한 API 키 확인
-- `.env` 파일 경로 및 형식 확인
-- API 사용량 한도 확인
-
-### 음성인식 오류
-- 인터넷 연결 상태 확인
-- 오디오 파일 품질 확인 (손상된 파일 제외)
-- Groq API 서비스 상태 확인
-
-## 📈 성능 최적화
-
-### 처리 속도 향상
-- 청크 단위 병렬 처리
-- 메모리 효율적인 스트리밍
-- 임시 파일 자동 정리
-
-### 품질 향상
-- 고품질 오디오 추출 (192kbps WAV)
-- 이중 보정 시스템 (패턴 + AI)
-- 신뢰도 기반 결과 검증
-
-## 📄 라이선스
+## 라이선스
 
 이 프로젝트는 MIT 라이선스 하에 배포됩니다.
 
-## 🤝 기여하기
+## 기여하기
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
@@ -269,10 +171,6 @@ brew install ffmpeg
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📞 지원
+## 지원
 
 문제가 발생하거나 궁금한 점이 있으시면 GitHub Issues를 통해 문의해 주세요.
-
----
-
-**⚡ 빠르고 정확한 동영상 자막 생성을 경험해보세요\!**
