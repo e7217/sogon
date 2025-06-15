@@ -1,20 +1,47 @@
-# Documentation changes
+# 문서 관련 변경사항
 documentation:
-  - changed-files:
-    - any-glob-to-any-file: ['**/*.md', '**/docs/**', '**/README*']
+- changed-files:
+  - any-glob-to-any-file:
+    - 'docs/**/*'
+    - '**/*.md'
+    - '**/*.mdx'
 
-# Dependency updates
-dependencies:
-  - changed-files:
-    - any-glob-to-any-file: ['**/pyproject.toml', '**/uv.lock', '**/requirements*.txt', '**/package.json', '**/yarn.lock', '**/Pipfile*']
+# 테스트 관련 변경사항
+tests:
+- changed-files:
+  - any-glob-to-any-file:
+    - 'tests/**/*'
+    - '**/*.test.*'
+    - '**/*.spec.*'
 
-# Bug fixes
-bug:
-  - changed-files:
-    - any-glob-to-any-file: ['**/fix/**', '**/hotfix/**']
+# 설정 파일 변경사항
+configuration:
+- changed-files:
+  - any-glob-to-any-file:
+    - '.github/**/*'
+    - '*.json'
+    - '*.yml'
+    - '*.yaml'
+    - '.env.example'
 
-# New features
+# 소스 코드 변경사항
 enhancement:
-  - changed-files:
-    - any-glob-to-any-file: ['**/feat/**', '**/feature/**']
+- changed-files:
+  - any-glob-to-any-file:
+    - 'src/**/*'
+    - 'app/**/*'
+    - 'example/**/*'
+    - '**/*.py'
+    - '**/*.js'
+    - '**/*.ts' 
 
+# Add 'feature' label to any PR where the head branch name starts with `feature` or has a `feature` section in the name
+feature:
+ - head-branch: ['^feat', 'feat']
+
+bug:
+ - head-branch: ['^fix', 'fix']
+
+# # Add 'release' label to any PR that is opened against the `main` branch
+# release:
+#  - base-branch: 'main'
