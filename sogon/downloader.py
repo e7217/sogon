@@ -178,17 +178,12 @@ def split_audio_by_size(audio_path, max_chunk_size_mb=24):
                 end_time = min(start_time + best_duration, total_duration_ms)
                 chunk = audio[start_time:end_time]
                 
-                # Skip chunks that are too short (less than 30 seconds)
-                chunk_duration_seconds = (end_time - start_time) / 1000
-                if chunk_duration_seconds < 30.0:
-                    logger.debug(f"Skipping chunk {chunk_index}: too short ({chunk_duration_seconds:.1f} seconds)")
-                    break
-                
                 chunk_path = os.path.join(temp_dir, f"{base_name}_chunk_{chunk_index}.mp3")
                 chunk.export(chunk_path, format="mp3", bitrate="128k")
                 
                 # Check exported chunk size
                 chunk_size_mb = os.path.getsize(chunk_path) / (1024 * 1024)
+                chunk_duration_seconds = (end_time - start_time) / 1000
                 chunks.append(chunk_path)
                 logger.debug(f"Created chunk {chunk_index}: {chunk_path} ({chunk_duration_seconds/60:.1f} min, {chunk_size_mb:.1f} MB)")
                 
