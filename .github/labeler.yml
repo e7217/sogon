@@ -8,22 +8,13 @@ dependencies:
   - changed-files:
     - any-glob-to-any-file: ['**/pyproject.toml', '**/uv.lock', '**/requirements*.txt', '**/package.json', '**/yarn.lock', '**/Pipfile*']
 
-# Test files
-tests:
+# Bug fixes
+bug:
   - changed-files:
-    - any-glob-to-any-file: ['**/test/**', '**/tests/**', '**/test_*.py', '**/*_test.py']
+    - any-glob-to-any-file: ['**/fix/**', '**/hotfix/**']
 
-# CI/CD workflows
-ci:
+# New features
+enhancement:
   - changed-files:
-    - any-glob-to-any-file: ['.github/**', '**/workflows/**']
+    - any-glob-to-any-file: ['**/feat/**', '**/feature/**']
 
-# API related changes
-api:
-  - changed-files:
-    - any-glob-to-any-file: ['**/api/**', '**/api_*.py', '**/*api*.py']
-
-# Configuration files
-config:
-  - changed-files:
-    - any-glob-to-any-file: ['**/*.toml', '**/*.yml', '**/*.yaml', '**/*.json', '**/*.ini', '**/*.cfg', '**/.env*']
