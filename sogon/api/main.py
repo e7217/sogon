@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # FastAPI app instance
 app = FastAPI(
     title="SOGON API",
-    description="Subtitle generator API from YouTube URLs or local audio files",
+    description="Subtitle generator API from media URLs or local audio files",
     version="1.0.0",
     debug=config.debug
 )
