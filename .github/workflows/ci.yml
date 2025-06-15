@@ -18,6 +18,9 @@ jobs:
         uses: actions/labeler@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+          pr-number: ${{ github.event.pull_request.number }}
 
   test:
     runs-on: ubuntu-latest
