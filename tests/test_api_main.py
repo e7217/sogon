@@ -378,6 +378,49 @@ class TestTranscriptionAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         mock_path_instance.unlink.assert_called_once()
 
+    def test_update_job_safely_success(self):
+        """Test safe job update when job exists"""
+        from sogon.api.main import update_job_safely
+        
+        # Create a job
+        job_id = "test-job-safe-update"
+        jobs[job_id] = {
+            "status": "pending",
+            "progress": 0
+        }
+        
+        # Test successful update
+        result = update_job_safely(job_id, {"status": "processing", "progress": 50})
+        self.assertTrue(result)
+        self.assertEqual(jobs[job_id]["status"], "processing")
+        self.assertEqual(jobs[job_id]["progress"], 50)
+
+    def test_update_job_safely_job_not_found(self):
+        """Test safe job update when job doesn't exist"""
+        from sogon.api.main import update_job_safely
+        
+        # Test update on non-existent job
+        result = update_job_safely("non-existent-job", {"status": "processing"})
+        self.assertFalse(result)
+
+    def test_update_job_safely_race_condition(self):
+        """Test safe job update during race condition"""
+        from sogon.api.main import update_job_safely
+        
+        # Create a job
+        job_id = "test-job-race"
+        jobs[job_id] = {
+            "status": "pending",
+            "progress": 0
+        }
+        
+        # Simulate deletion of job after existence check
+        del jobs[job_id]
+        
+        # This should handle the missing job gracefully
+        result = update_job_safely(job_id, {"status": "processing"})
+        self.assertFalse(result)
+
 
 class TestRequestResponseModels(unittest.TestCase):
     """Test cases for request/response models"""

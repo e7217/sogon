@@ -91,32 +91,55 @@ async def health_check():
         raise HTTPException(status_code=500, detail="Health check failed")
 
 
+def update_job_safely(job_id: str, updates: dict) -> bool:
+    """Safely update job status with race condition protection"""
+    if job_id in jobs:
+        try:
+            jobs[job_id].update(updates)
+            return True
+        except KeyError:
+            # Job was deleted between the check and update
+            logger.warning(f"Job {job_id} was deleted during update")
+            return False
+    else:
+        logger.warning(f"Job {job_id} not found during update")
+        return False
+
+
 async def process_transcription_task(job_id: str, input_path: str, enable_correction: bool, use_ai_correction: bool, subtitle_format: str):
     """Background task for processing transcription"""
     try:
         logger.info(f"Starting transcription job {job_id}")
-        jobs[job_id]["status"] = "processing"
-        jobs[job_id]["progress"] = 0
+        
+        # Safely update job status to processing
+        if not update_job_safely(job_id, {"status": "processing", "progress": 0}):
+            logger.info(f"Job {job_id} was cancelled before processing started")
+            return
         
         # Process the transcription
         original_files, corrected_files, actual_output_dir = process_input_to_subtitle(
             input_path, config.base_output_dir, subtitle_format, enable_correction, use_ai_correction
         )
         
-        jobs[job_id]["progress"] = 100
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["result"] = {
-            "original_files": original_files,
-            "corrected_files": corrected_files,
-            "output_directory": actual_output_dir
-        }
-        
+        # Safely update job completion status
+        if not update_job_safely(job_id, {
+            "progress": 100,
+            "status": "completed",
+            "result": {
+                "original_files": original_files,
+                "corrected_files": corrected_files,
+                "output_directory": actual_output_dir
+            }
+        }):
+            logger.info(f"Job {job_id} was cancelled during processing")
+            return
+            
         logger.info(f"Transcription job {job_id} completed successfully")
         
     except Exception as e:
         logger.error(f"Transcription job {job_id} failed: {e}")
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = str(e)
+        # Safely update job failure status
+        update_job_safely(job_id, {"status": "failed", "error": str(e)})
 
 
 @app.post("/api/v1/transcribe/url", response_model=TranscribeResponse)
