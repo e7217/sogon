@@ -4,7 +4,8 @@ bug:
 
 enhancement:
   - any: ['**/feat/**', '**/feature/**']
-  - title: '/\b(feat|feature|enhancement)\b/i'
+  - title: '/\b(feat|feature|enhancement|add|added|adding|new|update|updated|updating|upgrade|upgraded|upgrading)\b/i'
+  - body: '/\b(feat|feature|enhancement|add|added|adding|new|update|updated|updating|upgrade|upgraded|upgrading)\b/i'
 
 documentation:
   - any: ['**/*.md', '**/docs/**', '**/README*']

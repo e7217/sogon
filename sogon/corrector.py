@@ -42,7 +42,7 @@ def fix_ai_based_corrections(text, api_key=None):
 
         if len(text) <= max_chunk_length:
             chunks = [text]
-            logger.debug(f"Text is within maximum length, no splitting needed")
+            logger.debug("Text is within maximum length, no splitting needed")
         else:
             logger.debug(f"Text exceeds maximum length ({max_chunk_length}), starting split")
             # Split by sentences
@@ -204,7 +204,7 @@ def sort_timestamps_and_fix_overlaps(timestamps_data):
     logger.debug(f"Starting timestamp sorting: {len(timestamps_data)} items")
     # Sort by start time
     sorted_data = sorted(timestamps_data, key=lambda x: parse_timestamp(x[0]))
-    logger.debug(f"Timestamp sorting completed")
+    logger.debug("Timestamp sorting completed")
 
     # Fix overlapping time intervals
     fixed_data = []

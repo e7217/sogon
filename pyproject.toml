@@ -9,4 +9,16 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "yt-dlp>=2024.3.10",
     "pydub>=0.25.1",
+    "tqdm>=4.67.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.10.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.13",
 ]

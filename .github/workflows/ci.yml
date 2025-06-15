@@ -10,6 +10,9 @@ jobs:
   labeling:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Auto-label PR
         uses: actions/labeler@v5

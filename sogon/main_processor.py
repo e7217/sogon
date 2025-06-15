@@ -1,5 +1,5 @@
 """
-Main processing module - Complete workflow from YouTube link to subtitle generation
+Main processing module - Complete workflow from YouTube link or local file to subtitle generation
 """
 
 import os
@@ -12,6 +12,124 @@ from .transcriber import transcribe_audio
 from .utils import create_output_directory, save_subtitle_and_metadata
 
 logger = logging.getLogger(__name__)
+
+
+def is_url(input_string):
+    """
+    Check if input string is a URL
+    
+    Args:
+        input_string (str): Input string to check
+    
+    Returns:
+        bool: True if it's a URL, False otherwise
+    """
+    return input_string.startswith(('http://', 'https://', 'www.')) or 'youtube.com' in input_string or 'youtu.be' in input_string
+
+
+def file_to_subtitle(
+    file_path,
+    base_output_dir="./result",
+    subtitle_format="txt",
+    enable_correction=True,
+    use_ai_correction=True,
+):
+    """
+    Generate subtitles from local audio file
+    
+    Args:
+        file_path (str): Path to local audio file
+        base_output_dir (str): Base output directory
+        subtitle_format (str): Subtitle format (txt, srt)
+        enable_correction (bool): Whether to use text correction
+        use_ai_correction (bool): Whether to use AI-based correction
+    
+    Returns:
+        tuple: (original files, corrected files, output directory)
+    """
+    try:
+        # Check if file exists
+        if not os.path.exists(file_path):
+            logger.error(f"File not found: {file_path}")
+            return None, None, None
+        
+        # Check if it's a valid audio file
+        valid_extensions = ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac']
+        file_ext = Path(file_path).suffix.lower()
+        if file_ext not in valid_extensions:
+            logger.error(f"Unsupported audio format: {file_ext}. Supported formats: {', '.join(valid_extensions)}")
+            return None, None, None
+        
+        # Get filename without extension for output naming
+        file_name = Path(file_path).stem
+        logger.info(f"Processing local file: {file_name}")
+        
+        # Create output directory in date/time/filename format
+        output_dir = create_output_directory(base_output_dir, file_name)
+        logger.info(f"Output directory created: {output_dir}")
+        
+        logger.info("Generating subtitles with Groq Whisper Turbo...")
+        
+        # Speech recognition (including metadata)
+        subtitle_text, metadata = transcribe_audio(file_path)
+        
+        if not subtitle_text:
+            logger.error("Speech recognition failed.")
+            return None, None, None
+        
+        # Save subtitle and metadata files (including correction)
+        result = save_subtitle_and_metadata(
+            subtitle_text,
+            metadata,
+            output_dir,
+            file_name,
+            subtitle_format,
+            correction_enabled=enable_correction,
+            use_ai_correction=use_ai_correction,
+        )
+        
+        if result and len(result) == 4:
+            original_files = result[:3]
+            corrected_files = result[3]
+            return original_files, corrected_files, output_dir
+        else:
+            return result[:3] if result else None, None, output_dir
+    
+    except Exception as e:
+        logger.error(f"Error occurred during subtitle generation from file: {e}")
+        return None, None, None
+
+
+def process_input_to_subtitle(
+    input_path,
+    base_output_dir="./result",
+    subtitle_format="txt",
+    enable_correction=True,
+    use_ai_correction=True,
+):
+    """
+    Generate subtitles from URL or local file
+    
+    Args:
+        input_path (str): YouTube URL or local file path
+        base_output_dir (str): Base output directory
+        subtitle_format (str): Subtitle format (txt, srt)
+        enable_correction (bool): Whether to use text correction
+        use_ai_correction (bool): Whether to use AI-based correction
+    
+    Returns:
+        tuple: (original files, corrected files, output directory)
+    """
+    if is_url(input_path):
+        logger.info("Input detected as URL, processing with YouTube downloader...")
+        return youtube_to_subtitle(
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+        )
+    else:
+        logger.info("Input detected as file path, processing local file...")
+        return file_to_subtitle(
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+        )
 
 
 def youtube_to_subtitle(
