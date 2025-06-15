@@ -1,13 +1,13 @@
-# Video Subtitle Generator (Groq Whisper Turbo)
+# SOGON
 
-An AI-powered automation tool that extracts audio from video URLs or media files and generates subtitles using Groq Whisper Turbo.
+An AI-powered automation tool that extracts audio from video URLs or media files and generates subtitles using advanced speech recognition technology.
 
 > **[한국어](README_ko.md)**
 
 ## Key Features
 
-- **Flexible Audio Extraction**: High-quality audio extraction from video URLs or local media files via yt-dlp
-- **AI Speech Recognition**: Accurate Korean speech recognition with Groq Whisper Turbo
+- **Flexible Audio Extraction**: High-quality audio extraction from video URLs or local media files
+- **AI Speech Recognition**: Accurate Korean speech recognition with advanced AI models
 - **Large File Processing**: Automatic workaround for 24MB limit (file splitting)
 - **Precise Timestamps**: Segment-level time information in HH:mm:ss.SSS format
 - **Intelligent Text Correction**: Dual correction system (pattern-based + AI-based)
@@ -45,14 +45,14 @@ python main.py "/path/to/video/file.mp4"
 ```
 Video URL/File → Audio Extract → Speech Recognition → Text Correction → File Save
       ↓             ↓                ↓                 ↓              ↓
-    yt-dlp      ffmpeg        Groq Whisper         AI Correction   result/
+  Downloader    Audio Tool    AI Speech Model     AI Correction   result/
 ```
 
 ## Processing Steps
 
-1. **Audio Extraction**: Extract audio from video URLs or local files using yt-dlp + ffmpeg
-2. **File Processing**: Split large files to comply with 24MB API limit
-3. **Speech Recognition**: Process audio with Groq Whisper Turbo for Korean text
+1. **Audio Extraction**: Extract audio from video URLs or local files using media processing tools
+2. **File Processing**: Split large files to comply with API limitations
+3. **Speech Recognition**: Process audio with advanced AI models for Korean text
 4. **Text Correction**: Apply pattern-based and AI-based corrections
 5. **Output Generation**: Save original and corrected versions with timestamps
 
@@ -82,13 +82,13 @@ Subtitle with Timestamps (Corrected)
 
 ## Tech Stack
 
-|  Component | Tool/Library | Role |
-|-----------|--------------|------|
-| **Audio Extraction** | `yt-dlp` + `ffmpeg` | Video URL/File → WAV conversion |
-| **Audio Processing** | `pydub` | File splitting, format conversion |
-| **Speech Recognition** | `Groq Whisper Turbo` | Speech → Text + metadata |
-| **AI Correction** | `Groq LLM (llama-3.3-70b)` | Text correction |
-| **Environment Management** | `python-dotenv` | API key management |
+|  Component | Function | Role |
+|-----------|----------|------|
+| **Audio Extraction** | Media Downloader + Audio Processor | Video URL/File → Audio conversion |
+| **Audio Processing** | Audio Library | File splitting, format conversion |
+| **Speech Recognition** | AI Speech Model | Speech → Text + metadata |
+| **AI Correction** | Large Language Model | Text correction |
+| **Environment Management** | Configuration Manager | API key management |
 
 ## Output Files
 
@@ -97,27 +97,10 @@ The tool generates organized output files with timestamps and metadata for both 
 ## Advanced Features
 
 ### Existing File Correction
-```python
-from main import correct_existing_transcript_file
-
-# Correct existing timestamp file
-corrected_file = correct_existing_transcript_file(
-    './result/video_title_timestamps.txt',
-    use_ai_correction=True
-)
-```
+The tool provides functionality to correct existing transcript files with AI-based improvements.
 
 ### Configuration Options
-```python
-# Control correction features
-youtube_to_subtitle(
-    url,
-    output_dir="./result",
-    subtitle_format="txt",
-    enable_correction=True,      # Enable text correction
-    use_ai_correction=True       # Enable AI-based correction
-)
-```
+Various options are available to control correction features, output formats, and processing behavior.
 
 ## Error Handling
 
@@ -141,24 +124,16 @@ python main.py "/path/to/video.mp4"
 
 ### System Requirements
 - Python 3.12+
-- ffmpeg (for audio processing)
-- Internet connection (for video URL download and Groq API)
+- Audio processing tools
+- Internet connection (for video URL download and AI API access)
 
-### Python Packages
-```toml
-[project]
-dependencies = [
-    "groq>=0.26.0",
-    "python-dotenv>=1.0.0",
-    "yt-dlp>=2024.3.10",
-    "pydub>=0.25.1",
-]
-```
+### Dependencies
+The project requires various Python packages for audio processing, AI integration, and configuration management. See the project configuration file for specific requirements.
 
 ## Troubleshooting
 
-- **ffmpeg**: Install via package manager or download from official site
-- **API Key**: Set up valid Groq API key in `.env` file
+- **Audio Tools**: Install required audio processing tools via package manager
+- **API Key**: Set up valid AI service API key in `.env` file
 - **Network Issues**: Ensure stable internet connection
 
 ## License
