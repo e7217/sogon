@@ -7,6 +7,7 @@ Supports both YouTube video processing and local audio file transcription
 import sys
 import json
 import logging
+import argparse
 from sogon import process_input_to_subtitle
 
 # Logging configuration
@@ -93,10 +94,23 @@ def main():
     logger.info("Supports YouTube URLs and local audio files")
     logger.info("=" * 50)
 
-    # Get URL or file path from command line arguments
-    logger.debug(f"Number of command line arguments: {len(sys.argv)}")
-    if len(sys.argv) > 1:
-        input_path = sys.argv[1]
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="SOGON - Subtitle generator from YouTube URLs or local audio files")
+    parser.add_argument("input_path", nargs="?", help="YouTube URL or audio file path")
+    parser.add_argument("--format", "-f", choices=["txt", "srt", "json"], default="txt", 
+                       help="Output format for subtitles (default: txt)")
+    parser.add_argument("--output", "-o", default="./result", 
+                       help="Base output directory (default: ./result)")
+    parser.add_argument("--no-correction", action="store_true", 
+                       help="Disable text correction")
+    parser.add_argument("--no-ai-correction", action="store_true", 
+                       help="Disable AI-based correction")
+    
+    args = parser.parse_args()
+    
+    # Get input path
+    if args.input_path:
+        input_path = args.input_path
         logger.debug(f"Input received from command line: {input_path}")
     else:
         # Get URL or file path input from user
@@ -107,23 +121,21 @@ def main():
     # Exit with error message if no input provided
     if not input_path:
         logger.error("❌ Error: YouTube URL or file path was not provided.")
-        logger.info("Usage:")
-        logger.info("  python main.py <YouTube_URL_or_file_path>")
-        logger.info("  Or enter URL/file path after running the program.")
+        parser.print_help()
         logger.debug("Program terminated due to empty input")
         return
 
-    # Subtitle format (default: txt)
-    subtitle_format = "txt"
+    # Subtitle format
+    subtitle_format = args.format
     logger.debug(f"Subtitle format set: {subtitle_format}")
 
     # Base output directory (actual output created in date/time/title folder)
-    base_output_dir = "./result"
+    base_output_dir = args.output
     logger.debug(f"Base output directory: {base_output_dir}")
 
     # Correction feature settings
-    enable_correction = True
-    use_ai_correction = True
+    enable_correction = not args.no_correction
+    use_ai_correction = not args.no_ai_correction
     logger.debug(f"Correction settings: enable_correction={enable_correction}, use_ai_correction={use_ai_correction}")
 
     logger.info("\nStarting subtitle generation...")

@@ -77,6 +77,21 @@ def save_subtitle_and_metadata(
                 f.write("00:00:00,000 --> 99:59:59,999\n")
                 f.write(text)
                 f.write("\n")
+        elif format == "json":
+            timestamps_data = extract_timestamps_and_text(metadata)
+            json_data = {
+                "text": text,
+                "segments": [
+                    {
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "text": segment_text
+                    }
+                    for start_time, end_time, segment_text in timestamps_data
+                ]
+            }
+            with open(subtitle_path, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, indent=2, ensure_ascii=False)
 
         # Save original metadata
         with open(metadata_path, "w", encoding="utf-8") as f:
@@ -125,6 +140,21 @@ def save_subtitle_and_metadata(
                         f.write("00:00:00,000 --> 99:59:59,999\n")
                         f.write(corrected_text)
                         f.write("\n")
+                elif format == "json":
+                    corrected_timestamps_data = extract_timestamps_and_text(corrected_metadata)
+                    corrected_json_data = {
+                        "text": corrected_text,
+                        "segments": [
+                            {
+                                "start_time": start_time,
+                                "end_time": end_time,
+                                "text": segment_text
+                            }
+                            for start_time, end_time, segment_text in corrected_timestamps_data
+                        ]
+                    }
+                    with open(corrected_subtitle_path, "w", encoding="utf-8") as f:
+                        json.dump(corrected_json_data, f, indent=2, ensure_ascii=False)
 
                 # Save corrected metadata
                 with open(corrected_metadata_path, "w", encoding="utf-8") as f:

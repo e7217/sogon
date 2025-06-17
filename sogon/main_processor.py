@@ -40,7 +40,7 @@ def file_to_subtitle(
     Args:
         file_path (str): Path to local audio file
         base_output_dir (str): Base output directory
-        subtitle_format (str): Subtitle format (txt, srt)
+        subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
     
@@ -113,7 +113,7 @@ def process_input_to_subtitle(
     Args:
         input_path (str): YouTube URL or local file path
         base_output_dir (str): Base output directory
-        subtitle_format (str): Subtitle format (txt, srt)
+        subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
     
@@ -145,7 +145,7 @@ def youtube_to_subtitle(
     Args:
         url (str): YouTube URL
         base_output_dir (str): Base output directory
-        subtitle_format (str): Subtitle format (txt, srt)
+        subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
 
