@@ -92,8 +92,16 @@ def transcribe_audio(audio_file_path, api_key=None):
                 
                 # Load each chunk to get its actual duration
                 try:
-                    chunk_audio = AudioSegment.from_file(chunk_path)
-                    chunk_duration_seconds = len(chunk_audio) / 1000.0
+                    # Use ffprobe directly to get duration (avoid pydub stdin issue)
+                    import subprocess
+                    import json
+                    cmd = [
+                        'ffprobe', '-v', 'quiet', '-print_format', 'json',
+                        '-show_format', chunk_path
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=True)
+                    info = json.loads(result.stdout)
+                    chunk_duration_seconds = float(info['format']['duration'])
                     current_time_seconds += chunk_duration_seconds
                     logger.debug(f"Chunk {i+1} duration: {chunk_duration_seconds:.2f}s, starts at: {chunk_start_times[i]:.2f}s")
                 except Exception as e:
@@ -102,8 +110,15 @@ def transcribe_audio(audio_file_path, api_key=None):
                     if estimated_chunk_duration is None:
                         # Calculate estimated duration only once
                         try:
-                            full_audio = AudioSegment.from_file(audio_file_path)
-                            estimated_chunk_duration = len(full_audio) / len(audio_chunks) / 1000.0
+                            # Use ffprobe for fallback duration calculation too
+                            cmd = [
+                                'ffprobe', '-v', 'quiet', '-print_format', 'json',
+                                '-show_format', audio_file_path
+                            ]
+                            result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=True)
+                            info = json.loads(result.stdout)
+                            total_duration = float(info['format']['duration'])
+                            estimated_chunk_duration = total_duration / len(audio_chunks)
                             logger.debug(f"Calculated estimated chunk duration: {estimated_chunk_duration:.2f}s")
                         except Exception:
                             logger.warning("Could not estimate chunk duration, using default")
@@ -118,7 +133,6 @@ def transcribe_audio(audio_file_path, api_key=None):
 
         with tqdm(total=len(audio_chunks), desc="Transcribing chunks", unit="chunk") as pbar:
             for i, chunk_path in enumerate(audio_chunks):
-                logger.info(f"Processing chunk {i + 1}/{len(audio_chunks)}...")
                 pbar.set_description(f"Transcribing chunk {i + 1}/{len(audio_chunks)}")
                 
                 chunk_start_time = chunk_start_times[i]
