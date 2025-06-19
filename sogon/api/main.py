@@ -36,6 +36,7 @@ class TranscribeRequest(BaseModel):
     enable_correction: bool = True
     use_ai_correction: bool = True
     subtitle_format: str = "txt"
+    keep_audio: bool = False
 
 
 class TranscribeResponse(BaseModel):
@@ -106,7 +107,7 @@ def update_job_safely(job_id: str, updates: dict) -> bool:
         return False
 
 
-async def process_transcription_task(job_id: str, input_path: str, enable_correction: bool, use_ai_correction: bool, subtitle_format: str):
+async def process_transcription_task(job_id: str, input_path: str, enable_correction: bool, use_ai_correction: bool, subtitle_format: str, keep_audio: bool = False):
     """Background task for processing transcription"""
     try:
         logger.info(f"Starting transcription job {job_id}")
@@ -118,7 +119,7 @@ async def process_transcription_task(job_id: str, input_path: str, enable_correc
         
         # Process the transcription
         original_files, corrected_files, actual_output_dir = process_input_to_subtitle(
-            input_path, config.base_output_dir, subtitle_format, enable_correction, use_ai_correction
+            input_path, config.base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
         )
         
         # Safely update job completion status
@@ -163,7 +164,8 @@ async def transcribe_url(request: TranscribeRequest, background_tasks: Backgroun
         str(request.url),
         request.enable_correction,
         request.use_ai_correction,
-        request.subtitle_format
+        request.subtitle_format,
+        request.keep_audio
     )
     
     logger.info(f"Created transcription job {job_id} for URL: {request.url}")
@@ -181,7 +183,8 @@ async def transcribe_upload(
     file: UploadFile = File(...),
     enable_correction: bool = Form(True),
     use_ai_correction: bool = Form(True),
-    subtitle_format: str = Form("txt")
+    subtitle_format: str = Form("txt"),
+    keep_audio: bool = Form(False)
 ):
     """Upload file for transcription"""
     job_id = str(uuid.uuid4())
@@ -214,7 +217,8 @@ async def transcribe_upload(
             str(file_path),
             enable_correction,
             use_ai_correction,
-            subtitle_format
+            subtitle_format,
+            keep_audio
         )
         
         logger.info(f"Created transcription job {job_id} for uploaded file: {file.filename}")

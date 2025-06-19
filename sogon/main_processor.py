@@ -10,6 +10,7 @@ import yt_dlp
 from .downloader import download_youtube_audio
 from .transcriber import transcribe_audio
 from .utils import create_output_directory, save_subtitle_and_metadata
+from .audio_manager import AudioFileManager
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ def file_to_subtitle(
     subtitle_format="txt",
     enable_correction=True,
     use_ai_correction=True,
+    keep_audio=False,
 ):
     """
     Generate subtitles from local audio file
@@ -43,6 +45,7 @@ def file_to_subtitle(
         subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
+        keep_audio (bool): Whether to keep audio files after processing
     
     Returns:
         tuple: (original files, corrected files, output directory)
@@ -106,6 +109,7 @@ def process_input_to_subtitle(
     subtitle_format="txt",
     enable_correction=True,
     use_ai_correction=True,
+    keep_audio=False,
 ):
     """
     Generate subtitles from URL or local file
@@ -116,6 +120,7 @@ def process_input_to_subtitle(
         subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
+        keep_audio (bool): Whether to keep audio files after processing
     
     Returns:
         tuple: (original files, corrected files, output directory)
@@ -123,12 +128,12 @@ def process_input_to_subtitle(
     if is_url(input_path):
         logger.info("Input detected as URL, processing with YouTube downloader...")
         return youtube_to_subtitle(
-            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
         )
     else:
         logger.info("Input detected as file path, processing local file...")
         return file_to_subtitle(
-            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
         )
 
 
@@ -138,6 +143,7 @@ def youtube_to_subtitle(
     subtitle_format="txt",
     enable_correction=True,
     use_ai_correction=True,
+    keep_audio=False,
 ):
     """
     Generate subtitles from YouTube link (including correction features)
@@ -148,6 +154,7 @@ def youtube_to_subtitle(
         subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
+        keep_audio (bool): Whether to keep audio files after processing
 
     Returns:
         tuple: (original files, corrected files, output directory)
@@ -193,14 +200,13 @@ def youtube_to_subtitle(
             use_ai_correction=use_ai_correction,
         )
 
-        # Delete temporary audio file
-        try:
-            os.remove(audio_path)
-            temp_dir = os.path.dirname(audio_path)
-            if temp_dir.startswith(tempfile.gettempdir()):
-                os.rmdir(temp_dir)
-        except OSError:
-            pass
+        # Handle audio file using AudioFileManager
+        with AudioFileManager(keep_audio=keep_audio) as audio_manager:
+            final_audio_path = audio_manager.handle_downloaded_audio(
+                audio_path, output_dir, video_name
+            )
+            if final_audio_path:
+                logger.info(f"Audio file preserved at: {final_audio_path}")
 
         if result and len(result) == 4:
             original_files = result[:3]
