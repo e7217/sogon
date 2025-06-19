@@ -105,6 +105,8 @@ def main():
                        help="Disable text correction")
     parser.add_argument("--no-ai-correction", action="store_true", 
                        help="Disable AI-based correction")
+    parser.add_argument("--keep-audio", action="store_true", 
+                       help="Keep downloaded audio files after processing")
     
     args = parser.parse_args()
     
@@ -136,7 +138,9 @@ def main():
     # Correction feature settings
     enable_correction = not args.no_correction
     use_ai_correction = not args.no_ai_correction
+    keep_audio = args.keep_audio
     logger.debug(f"Correction settings: enable_correction={enable_correction}, use_ai_correction={use_ai_correction}")
+    logger.debug(f"Keep audio files: {keep_audio}")
 
     logger.info("\nStarting subtitle generation...")
     logger.info(f"Input: {input_path}")
@@ -144,12 +148,13 @@ def main():
     logger.info(f"Base output directory: {base_output_dir}")
     logger.info(f"Text correction: {'enabled' if enable_correction else 'disabled'}")
     logger.info(f"AI correction: {'enabled' if use_ai_correction else 'disabled'}")
+    logger.info(f"Keep audio files: {'enabled' if keep_audio else 'disabled'}")
     logger.info("-" * 50)
 
     try:
         # Generate subtitles (including correction features)
         original_files, corrected_files, actual_output_dir = process_input_to_subtitle(
-            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
         )
 
         logger.info(f"\n📁 Actual output directory: {actual_output_dir}")

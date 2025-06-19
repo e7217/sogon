@@ -195,6 +195,26 @@ class TestTranscriptionAPI(unittest.TestCase):
         self.assertEqual(jobs[job_id]["input_type"], "url")
         self.assertIn(jobs[job_id]["status"], ["pending", "processing", "completed", "failed"])
 
+    def test_transcribe_url_with_keep_audio_option(self):
+        """Test URL transcription with keep_audio option"""
+        response = self.client.post(
+            "/api/v1/transcribe/url",
+            json={
+                "url": "https://www.youtube.com/watch?v=test",
+                "enable_correction": True,
+                "use_ai_correction": True,
+                "subtitle_format": "txt",
+                "keep_audio": True
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertIn("job_id", data)
+        self.assertEqual(data["status"], "pending")
+        self.assertEqual(data["message"], "Transcription job created successfully")
+
     def test_transcribe_url_invalid_url(self):
         """Test URL transcription with invalid URL"""
         response = self.client.post(
@@ -229,6 +249,37 @@ class TestTranscriptionAPI(unittest.TestCase):
                 "enable_correction": "true",
                 "use_ai_correction": "true",
                 "subtitle_format": "txt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertIn("job_id", data)
+        self.assertEqual(data["status"], "pending")
+        self.assertEqual(data["message"], "File uploaded and transcription job created successfully")
+
+    @patch('sogon.api.main.config')
+    @patch('builtins.open', new_callable=mock_open)
+    @patch('sogon.api.main.Path')
+    def test_transcribe_upload_with_keep_audio(self, mock_path, mock_file, mock_config):
+        """Test file upload transcription with keep_audio option"""
+        mock_config.base_output_dir = "/test/output"
+        mock_path_instance = MagicMock()
+        mock_path_instance.mkdir = MagicMock()
+        mock_path.return_value = mock_path_instance
+        
+        # Create test file content
+        test_file_content = b"test audio file content"
+        
+        response = self.client.post(
+            "/api/v1/transcribe/upload",
+            files={"file": ("test.mp3", io.BytesIO(test_file_content), "audio/mpeg")},
+            data={
+                "enable_correction": "true",
+                "use_ai_correction": "true", 
+                "subtitle_format": "txt",
+                "keep_audio": "true"
             }
         )
 
@@ -450,6 +501,24 @@ class TestRequestResponseModels(unittest.TestCase):
         self.assertTrue(request.enable_correction)  # Default
         self.assertTrue(request.use_ai_correction)  # Default
         self.assertEqual(request.subtitle_format, "txt")  # Default
+        self.assertFalse(request.keep_audio)  # Default
+
+    def test_transcribe_request_with_keep_audio(self):
+        """Test TranscribeRequest model with keep_audio option"""
+        data = {
+            "url": "https://www.youtube.com/watch?v=test",
+            "enable_correction": True,
+            "use_ai_correction": False,
+            "subtitle_format": "srt",
+            "keep_audio": True
+        }
+        
+        request = TranscribeRequest(**data)
+        self.assertEqual(str(request.url), "https://www.youtube.com/watch?v=test")
+        self.assertTrue(request.enable_correction)
+        self.assertFalse(request.use_ai_correction)
+        self.assertEqual(request.subtitle_format, "srt")
+        self.assertTrue(request.keep_audio)
 
     def test_transcribe_response_model(self):
         """Test TranscribeResponse model"""

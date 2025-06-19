@@ -33,6 +33,7 @@ def file_to_subtitle(
     subtitle_format="txt",
     enable_correction=True,
     use_ai_correction=True,
+    keep_audio=False,
 ):
     """
     Generate subtitles from local audio file
@@ -43,6 +44,7 @@ def file_to_subtitle(
         subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
+        keep_audio (bool): Whether to keep audio files after processing
     
     Returns:
         tuple: (original files, corrected files, output directory)
@@ -106,6 +108,7 @@ def process_input_to_subtitle(
     subtitle_format="txt",
     enable_correction=True,
     use_ai_correction=True,
+    keep_audio=False,
 ):
     """
     Generate subtitles from URL or local file
@@ -116,6 +119,7 @@ def process_input_to_subtitle(
         subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
+        keep_audio (bool): Whether to keep audio files after processing
     
     Returns:
         tuple: (original files, corrected files, output directory)
@@ -123,12 +127,12 @@ def process_input_to_subtitle(
     if is_url(input_path):
         logger.info("Input detected as URL, processing with YouTube downloader...")
         return youtube_to_subtitle(
-            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
         )
     else:
         logger.info("Input detected as file path, processing local file...")
         return file_to_subtitle(
-            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction
+            input_path, base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
         )
 
 
@@ -138,6 +142,7 @@ def youtube_to_subtitle(
     subtitle_format="txt",
     enable_correction=True,
     use_ai_correction=True,
+    keep_audio=False,
 ):
     """
     Generate subtitles from YouTube link (including correction features)
@@ -148,6 +153,7 @@ def youtube_to_subtitle(
         subtitle_format (str): Subtitle format (txt, srt, json)
         enable_correction (bool): Whether to use text correction
         use_ai_correction (bool): Whether to use AI-based correction
+        keep_audio (bool): Whether to keep audio files after processing
 
     Returns:
         tuple: (original files, corrected files, output directory)
@@ -193,14 +199,42 @@ def youtube_to_subtitle(
             use_ai_correction=use_ai_correction,
         )
 
-        # Delete temporary audio file
-        try:
-            os.remove(audio_path)
-            temp_dir = os.path.dirname(audio_path)
-            if temp_dir.startswith(tempfile.gettempdir()):
-                os.rmdir(temp_dir)
-        except OSError:
-            pass
+        # Handle audio file based on keep_audio option
+        if keep_audio:
+            # Move audio file to output directory
+            audio_filename = f"{video_name}.mp3"
+            final_audio_path = os.path.join(output_dir, audio_filename)
+            try:
+                import shutil
+                shutil.move(audio_path, final_audio_path)
+                logger.info(f"Audio file saved to: {final_audio_path}")
+                # Clean up temporary directory if it's empty
+                temp_dir = os.path.dirname(audio_path)
+                if temp_dir.startswith(tempfile.gettempdir()):
+                    try:
+                        os.rmdir(temp_dir)
+                    except OSError:
+                        pass
+            except Exception as e:
+                logger.warning(f"Failed to move audio file: {e}")
+                # Fallback: try to delete the temporary file
+                try:
+                    os.remove(audio_path)
+                    temp_dir = os.path.dirname(audio_path)
+                    if temp_dir.startswith(tempfile.gettempdir()):
+                        os.rmdir(temp_dir)
+                except OSError:
+                    pass
+        else:
+            # Delete temporary audio file (original behavior)
+            try:
+                os.remove(audio_path)
+                temp_dir = os.path.dirname(audio_path)
+                if temp_dir.startswith(tempfile.gettempdir()):
+                    os.rmdir(temp_dir)
+                logger.debug("Temporary audio file deleted")
+            except OSError:
+                pass
 
         if result and len(result) == 4:
             original_files = result[:3]
