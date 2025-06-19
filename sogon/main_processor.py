@@ -10,6 +10,7 @@ import yt_dlp
 from .downloader import download_youtube_audio
 from .transcriber import transcribe_audio
 from .utils import create_output_directory, save_subtitle_and_metadata
+from .audio_manager import AudioFileManager
 
 logger = logging.getLogger(__name__)
 
@@ -199,42 +200,13 @@ def youtube_to_subtitle(
             use_ai_correction=use_ai_correction,
         )
 
-        # Handle audio file based on keep_audio option
-        if keep_audio:
-            # Move audio file to output directory
-            audio_filename = f"{video_name}.mp3"
-            final_audio_path = os.path.join(output_dir, audio_filename)
-            try:
-                import shutil
-                shutil.move(audio_path, final_audio_path)
-                logger.info(f"Audio file saved to: {final_audio_path}")
-                # Clean up temporary directory if it's empty
-                temp_dir = os.path.dirname(audio_path)
-                if temp_dir.startswith(tempfile.gettempdir()):
-                    try:
-                        os.rmdir(temp_dir)
-                    except OSError:
-                        pass
-            except Exception as e:
-                logger.warning(f"Failed to move audio file: {e}")
-                # Fallback: try to delete the temporary file
-                try:
-                    os.remove(audio_path)
-                    temp_dir = os.path.dirname(audio_path)
-                    if temp_dir.startswith(tempfile.gettempdir()):
-                        os.rmdir(temp_dir)
-                except OSError:
-                    pass
-        else:
-            # Delete temporary audio file (original behavior)
-            try:
-                os.remove(audio_path)
-                temp_dir = os.path.dirname(audio_path)
-                if temp_dir.startswith(tempfile.gettempdir()):
-                    os.rmdir(temp_dir)
-                logger.debug("Temporary audio file deleted")
-            except OSError:
-                pass
+        # Handle audio file using AudioFileManager
+        with AudioFileManager(keep_audio=keep_audio) as audio_manager:
+            final_audio_path = audio_manager.handle_downloaded_audio(
+                audio_path, output_dir, video_name
+            )
+            if final_audio_path:
+                logger.info(f"Audio file preserved at: {final_audio_path}")
 
         if result and len(result) == 4:
             original_files = result[:3]
