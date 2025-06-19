@@ -7,32 +7,22 @@ Supports both YouTube video processing and local audio file transcription
 import sys
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import argparse
 from sogon import process_input_to_subtitle
 
 # Logging configuration
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('sogon.log', encoding='utf-8')
-    ]
-)
-
-# Configure console logger to output INFO level and above
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(console_formatter)
 
-# Configure file logger to output all DEBUG level and above logs
-file_handler = logging.FileHandler('sogon.log', mode='a', encoding='utf-8')
+file_handler = RotatingFileHandler('sogon.log', maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s')
 file_handler.setFormatter(file_formatter)
 
-# Reconfigure root logger
+# Configure root logger
 root_logger = logging.getLogger()
 root_logger.handlers.clear()
 root_logger.addHandler(console_handler)

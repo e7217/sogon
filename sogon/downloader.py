@@ -6,6 +6,7 @@ import os
 import tempfile
 import re
 import logging
+from pathlib import Path
 import yt_dlp
 from pydub import AudioSegment
 from tqdm import tqdm
@@ -31,7 +32,7 @@ def download_youtube_audio(url, output_dir=None):
     ydl_opts = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",  # Prefer m4a for speed improvement
         "extractaudio": True,
-        "audioformat": "mp3",
+        "audioformat": "m4a",  # Keep original m4a format to avoid unnecessary conversion
         "outtmpl": os.path.join(output_dir, "%(title)s.%(ext)s"),
         "socket_timeout": 30,  # Reduced socket timeout (default 60s → 30s)
         "retries": 3,  # Reduced retry count (default 10 → 3)
@@ -41,7 +42,7 @@ def download_youtube_audio(url, output_dir=None):
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
+                "preferredcodec": "m4a",  # Keep m4a format
                 "preferredquality": "128",  # Lower quality for speed improvement (192 → 128)
             }
         ],
@@ -60,9 +61,9 @@ def download_youtube_audio(url, output_dir=None):
             # Download
             ydl.download([url])
 
-            # Find downloaded file
+            # Find downloaded file (m4a or mp3)
             for file in os.listdir(output_dir):
-                if file.endswith(".mp3"):
+                if file.endswith((".m4a", ".mp3")):
                     return os.path.join(output_dir, file)
 
             return output_path
@@ -79,8 +80,8 @@ def split_audio_by_size(audio_path, max_chunk_size_mb=24):
     """
     Split audio file into size-based chunks to ensure API compatibility
     
-    Note: Uses intelligent duration estimation based on original file bitrate
-    to minimize unnecessary chunk creation while staying under 25MB API limit.
+    Uses ffmpeg directly to avoid memory issues with large files.
+    Temporarily renames files with special characters to avoid subprocess issues.
 
     Args:
         audio_path (str): Audio file path
@@ -89,117 +90,131 @@ def split_audio_by_size(audio_path, max_chunk_size_mb=24):
     Returns:
         list: List of split audio file paths
     """
+    import subprocess
+    import json
+    import hashlib
+    
     try:
-        # Load audio with pydub (auto-detect format)
-        audio = AudioSegment.from_file(audio_path)
-
-        # Convert MB to bytes
-        max_chunk_size_bytes = max_chunk_size_mb * 1024 * 1024
+        # Create a safe temporary filename for processing
+        original_path = Path(audio_path)
+        safe_filename = f"temp_audio_{hashlib.md5(str(original_path).encode()).hexdigest()[:8]}{original_path.suffix}"
+        safe_path = original_path.parent / safe_filename
         
-        # Check original file size
-        original_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-        if original_size_mb <= max_chunk_size_mb:
-            logger.info(f"Audio file size ({original_size_mb:.1f} MB) is within limit ({max_chunk_size_mb} MB), no splitting needed")
+        # Copy to safe filename if original has special characters or non-ASCII chars
+        filename = str(original_path.name)
+        has_korean = any('\uac00' <= char <= '\ud7af' for char in filename)
+        has_special = any(char in filename for char in [' ', '(', ')', '[', ']', '&', '$', '!', '@', '#', '%'])
+        needs_rename = has_korean or has_special
+        
+        if needs_rename:
+            logger.debug(f"Renaming file for safe processing: {original_path.name} -> {safe_filename}")
+            import shutil
+            shutil.copy2(audio_path, safe_path)
+            working_path = str(safe_path)
+        else:
+            working_path = audio_path
+        
+        # Get audio duration using ffprobe (faster than loading entire file)
+        cmd = [
+            'ffprobe', '-v', 'quiet', '-print_format', 'json', 
+            '-show_format', '-show_streams', working_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=True)
+        info = json.loads(result.stdout)
+        
+        duration_seconds = float(info['format']['duration'])
+        file_size_mb = os.path.getsize(working_path) / (1024 * 1024)
+        
+        logger.info(f"Original file: {file_size_mb:.1f}MB, {duration_seconds/60:.1f}min")
+        
+        # If file is already small enough, return original file
+        if file_size_mb <= max_chunk_size_mb:
+            logger.info("File size within limit, no splitting needed")
+            # Clean up temporary file if created
+            if needs_rename and safe_path.exists():
+                safe_path.unlink()
             return [audio_path]
-            
-        # Calculate optimal chunk duration based on original file properties
-        total_duration_ms = len(audio)
-        original_bitrate_kbps = (original_size_mb * 1024 * 8) / (total_duration_ms / 1000)  # kbps
         
-        # Estimate target duration for max chunk size (with safety margin)
-        target_chunk_size_mb = max_chunk_size_mb * 0.9  # 90% of limit for safety
-        estimated_chunk_duration_ms = int((target_chunk_size_mb * 1024 * 8 * 1000) / original_bitrate_kbps)
+        # Calculate number of chunks needed
+        num_chunks = int((file_size_mb / max_chunk_size_mb) + 0.5)
+        chunk_duration = duration_seconds / num_chunks
         
-        logger.info(f"Original file: {original_size_mb:.1f}MB, {total_duration_ms/1000/60:.1f}min, ~{original_bitrate_kbps:.0f}kbps")
-        logger.info(f"Estimated chunk duration: {estimated_chunk_duration_ms/1000/60:.1f} minutes")
+        logger.info(f"Splitting into {num_chunks} chunks of ~{chunk_duration/60:.1f} minutes each")
+        
+        # Detect original file format for chunk export
+        original_ext = Path(working_path).suffix.lower()
+        chunk_format = "m4a" if original_ext == ".m4a" else "mp3"
 
+        # Create temporary directory for chunks
+        temp_dir = tempfile.mkdtemp()
+        # Use safe name for chunk files (avoid Korean characters)
+        safe_base_name = Path(working_path).stem  # Use the already safe filename
         chunks = []
-        temp_dir = os.path.dirname(audio_path)
-        base_name = os.path.splitext(os.path.basename(audio_path))[0]
-
-        # Split audio into size-based chunks
-        chunk_index = 0
-        start_time = 0
         
-        # Calculate approximate number of chunks for progress bar
-        estimated_chunks = max(1, int(total_duration_ms / estimated_chunk_duration_ms) + 1)
-        
-        with tqdm(total=estimated_chunks, desc="Splitting audio", unit="chunk") as pbar:
-            while start_time < total_duration_ms:
-                chunk_index += 1
+        # Split audio using ffmpeg directly (much faster)
+        with tqdm(total=num_chunks, desc="Splitting audio", unit="chunk") as pbar:
+            for i in range(num_chunks):
+                start_time = i * chunk_duration
+                chunk_path = os.path.join(temp_dir, f"{safe_base_name}_chunk_{i+1}.{chunk_format}")
                 
-                # Calculate optimal chunk duration for target size
-                remaining_duration = total_duration_ms - start_time
-                min_duration = 30000  # 30 seconds minimum
+                # Use ffmpeg to extract chunk directly (no memory loading)
+                # Optimize parameter order: seek before input for better performance
+                cmd = [
+                    'ffmpeg', '-y', 
+                    '-ss', str(start_time),  # Seek before input for efficiency
+                    '-i', working_path,
+                    '-t', str(round(chunk_duration, 2)),  # Round to avoid precision issues
+                    '-c', 'copy',  # Copy codec without re-encoding when possible
+                    '-avoid_negative_ts', 'make_zero',
+                    chunk_path
+                ]
                 
-                # If remaining time is less than minimum, process it all
-                if remaining_duration <= min_duration:
-                    best_duration = remaining_duration
-                else:
-                    # Use estimated duration as starting point, then fine-tune
-                    target_duration = min(estimated_chunk_duration_ms, remaining_duration)
+                try:
+                    logger.debug(f"Running ffmpeg command: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=True, timeout=120)
                     
-                    # Test the estimated duration first
-                    end_time = min(start_time + target_duration, total_duration_ms)
-                    test_chunk = audio[start_time:end_time]
-                    
-                    temp_path = os.path.join(temp_dir, f"temp_test_chunk_{chunk_index}.mp3")
-                    test_chunk.export(temp_path, format="mp3", bitrate="128k")
-                    
-                    chunk_size_bytes = os.path.getsize(temp_path)
-                    os.remove(temp_path)
-                    
-                    if chunk_size_bytes <= max_chunk_size_bytes:
-                        # Estimated duration works, try to make it larger
-                        best_duration = target_duration
-                        
-                        # Try to extend by 1-2 minutes if possible
-                        for extra_minutes in [1, 2]:
-                            extended_duration = target_duration + (extra_minutes * 60 * 1000)
-                            if start_time + extended_duration <= total_duration_ms:
-                                end_time = start_time + extended_duration
-                                test_chunk = audio[start_time:end_time]
-                                
-                                temp_path = os.path.join(temp_dir, f"temp_test_chunk_{chunk_index}_ext.mp3")
-                                test_chunk.export(temp_path, format="mp3", bitrate="128k")
-                                
-                                chunk_size_bytes = os.path.getsize(temp_path)
-                                os.remove(temp_path)
-                                
-                                if chunk_size_bytes <= max_chunk_size_bytes:
-                                    best_duration = extended_duration
-                                else:
-                                    break
+                    # Check if chunk was created successfully
+                    if os.path.exists(chunk_path):
+                        chunk_size_mb = os.path.getsize(chunk_path) / (1024 * 1024)
+                        chunks.append(chunk_path)
+                        logger.debug(f"Created chunk {i+1}: {Path(chunk_path).name} ({chunk_size_mb:.1f} MB)")
                     else:
-                        # Estimated duration too large, reduce it
-                        best_duration = max(min_duration, target_duration // 2)
+                        logger.warning(f"Chunk {i+1} was not created successfully")
+                        
+                except subprocess.TimeoutExpired as e:
+                    logger.error(f"Chunk {i+1} ffmpeg timeout after 60s")
+                    continue
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"Failed to create chunk {i+1}: {e}")
+                    logger.debug(f"ffmpeg stderr: {e.stderr}")
+                    logger.debug(f"ffmpeg stdout: {e.stdout}")
+                    continue
                 
-                # Create the actual chunk with best duration
-                end_time = min(start_time + best_duration, total_duration_ms)
-                chunk = audio[start_time:end_time]
-                
-                chunk_path = os.path.join(temp_dir, f"{base_name}_chunk_{chunk_index}.mp3")
-                chunk.export(chunk_path, format="mp3", bitrate="128k")
-                
-                # Check exported chunk size
-                chunk_size_mb = os.path.getsize(chunk_path) / (1024 * 1024)
-                chunk_duration_seconds = (end_time - start_time) / 1000
-                chunks.append(chunk_path)
-                logger.debug(f"Created chunk {chunk_index}: {chunk_path} ({chunk_duration_seconds/60:.1f} min, {chunk_size_mb:.1f} MB)")
-                
-                # Update progress bar
                 pbar.update(1)
-                pbar.set_postfix(size=f"{chunk_size_mb:.1f}MB", duration=f"{chunk_duration_seconds/60:.1f}min")
-                
-                start_time = end_time
+                pbar.set_postfix(chunk=f"{i+1}/{num_chunks}")
 
-        logger.info(f"Split audio into {len(chunks)} chunks (estimated: {estimated_chunks}) of max {max_chunk_size_mb} MB each")
+        logger.info(f"Split audio into {len(chunks)} chunks of max {max_chunk_size_mb} MB each")
+        
+        # Clean up temporary safe file if created
+        if needs_rename and safe_path.exists():
+            logger.debug(f"Cleaning up temporary file: {safe_filename}")
+            safe_path.unlink()
+            
         return chunks
 
     except Exception as e:
         logger.error(f"Error occurred during audio splitting: {e}, cause: {e.__cause__ or 'unknown'}")
         logger.debug(f"Audio splitting detailed error: {type(e).__name__}: {str(e)}")
         if e.__cause__:
-            logger.debug(f"Audio splitting root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            logger.debug(f"Audio splitting root cause: {type(e).__cause__.__name__}: {str(e.__cause__)}")
+        
+        # Clean up temporary safe file if created
+        try:
+            if 'needs_rename' in locals() and needs_rename and 'safe_path' in locals() and safe_path.exists():
+                logger.debug(f"Cleaning up temporary file after error: {safe_path}")
+                safe_path.unlink()
+        except Exception as cleanup_error:
+            logger.debug(f"Failed to cleanup temporary file: {cleanup_error}")
+            
         # Return empty list to indicate failure, not the original file
         return []
