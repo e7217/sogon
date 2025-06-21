@@ -205,3 +205,4 @@ def _save_json_format(file_path: str, text: str, metadata: list) -> None:
     }
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, indent=2, ensure_ascii=False)
+
