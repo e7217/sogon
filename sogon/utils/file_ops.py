@@ -69,30 +69,7 @@ def save_subtitle_and_metadata(
         timestamp_path = os.path.join(output_dir, f"{base_filename}_timestamps.txt")
 
         # Save original subtitles
-        if format == "txt":
-            with open(subtitle_path, "w", encoding="utf-8") as f:
-                f.write(text)
-        elif format == "srt":
-            with open(subtitle_path, "w", encoding="utf-8") as f:
-                f.write("1\n")
-                f.write("00:00:00,000 --> 99:59:59,999\n")
-                f.write(text)
-                f.write("\n")
-        elif format == "json":
-            timestamps_data = extract_timestamps_and_text(metadata)
-            json_data = {
-                "text": text,
-                "segments": [
-                    {
-                        "start_time": start_time,
-                        "end_time": end_time,
-                        "text": segment_text
-                    }
-                    for start_time, end_time, segment_text in timestamps_data
-                ]
-            }
-            with open(subtitle_path, "w", encoding="utf-8") as f:
-                json.dump(json_data, f, indent=2, ensure_ascii=False)
+        _save_subtitle_by_format(subtitle_path, text, metadata, format)
 
         # Save original metadata
         with open(metadata_path, "w", encoding="utf-8") as f:
@@ -132,30 +109,7 @@ def save_subtitle_and_metadata(
                 )
 
                 # Save corrected subtitles
-                if format == "txt":
-                    with open(corrected_subtitle_path, "w", encoding="utf-8") as f:
-                        f.write(corrected_text)
-                elif format == "srt":
-                    with open(corrected_subtitle_path, "w", encoding="utf-8") as f:
-                        f.write("1\n")
-                        f.write("00:00:00,000 --> 99:59:59,999\n")
-                        f.write(corrected_text)
-                        f.write("\n")
-                elif format == "json":
-                    corrected_timestamps_data = extract_timestamps_and_text(corrected_metadata)
-                    corrected_json_data = {
-                        "text": corrected_text,
-                        "segments": [
-                            {
-                                "start_time": start_time,
-                                "end_time": end_time,
-                                "text": segment_text
-                            }
-                            for start_time, end_time, segment_text in corrected_timestamps_data
-                        ]
-                    }
-                    with open(corrected_subtitle_path, "w", encoding="utf-8") as f:
-                        json.dump(corrected_json_data, f, indent=2, ensure_ascii=False)
+                _save_subtitle_by_format(corrected_subtitle_path, corrected_text, corrected_metadata, format)
 
                 # Save corrected metadata
                 with open(corrected_metadata_path, "w", encoding="utf-8") as f:
@@ -202,3 +156,52 @@ def save_subtitle_and_metadata(
         if e.__cause__:
             logger.debug(f"File saving root cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
         return None, None, None, None
+
+
+def _save_subtitle_by_format(file_path: str, text: str, metadata: list, format: str) -> None:
+    """Save subtitle in specified format with reduced if/elif nesting"""
+    
+    format_handlers = {
+        "txt": _save_txt_format,
+        "srt": _save_srt_format,
+        "json": _save_json_format
+    }
+    
+    handler = format_handlers.get(format)
+    if handler:
+        handler(file_path, text, metadata)
+    else:
+        raise ValueError(f"Unsupported format: {format}")
+
+
+def _save_txt_format(file_path: str, text: str, metadata: list) -> None:
+    """Save as plain text format"""
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def _save_srt_format(file_path: str, text: str, metadata: list) -> None:
+    """Save as SRT format"""
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write("1\n")
+        f.write("00:00:00,000 --> 99:59:59,999\n")
+        f.write(text)
+        f.write("\n")
+
+
+def _save_json_format(file_path: str, text: str, metadata: list) -> None:
+    """Save as JSON format"""
+    timestamps_data = extract_timestamps_and_text(metadata)
+    json_data = {
+        "text": text,
+        "segments": [
+            {
+                "start_time": start_time,
+                "end_time": end_time,
+                "text": segment_text
+            }
+            for start_time, end_time, segment_text in timestamps_data
+        ]
+    }
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, indent=2, ensure_ascii=False)

@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # Allow running validation directly
     try:
         validate_configuration()
-        print("✅ Configuration is valid")
+        print("Configuration is valid")
     except ConfigurationError as e:
-        print(f"❌ Configuration error: {e}")
+        print(f"Configuration error: {e}")
         exit(1)

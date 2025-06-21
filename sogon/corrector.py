@@ -40,54 +40,7 @@ def fix_ai_based_corrections(text, api_key=None):
 
         logger.info(f"Original text length: {len(text)} characters")
 
-        if len(text) <= max_chunk_length:
-            chunks = [text]
-            logger.debug("Text is within maximum length, no splitting needed")
-        else:
-            logger.debug(f"Text exceeds maximum length ({max_chunk_length}), starting split")
-            # Split by sentences
-            sentences = re.split(r"[.!?]\s*", text)
-
-            if len(sentences) <= 1:
-                sentences = re.split(r",\s*", text)
-
-            if len(sentences) <= 1:
-                sentences = text.split(" ")
-
-            chunks = []
-            current_chunk = ""
-
-            for sentence in sentences:
-                sentence = sentence.strip()
-                if not sentence:
-                    continue
-
-                test_chunk = current_chunk + (" " if current_chunk else "") + sentence
-
-                if len(test_chunk) <= max_chunk_length:
-                    current_chunk = test_chunk
-                else:
-                    if current_chunk:
-                        chunks.append(current_chunk)
-
-                    if len(sentence) > max_chunk_length:
-                        words = sentence.split(" ")
-                        temp_chunk = ""
-                        for word in words:
-                            if len(temp_chunk + " " + word) <= max_chunk_length:
-                                temp_chunk += (" " if temp_chunk else "") + word
-                            else:
-                                if temp_chunk:
-                                    chunks.append(temp_chunk)
-                                temp_chunk = word
-                        if temp_chunk:
-                            current_chunk = temp_chunk
-                    else:
-                        current_chunk = sentence
-
-            if current_chunk:
-                chunks.append(current_chunk)
-                logger.debug(f"Added last chunk: length={len(current_chunk)}")
+        chunks = _split_text_into_chunks(text, max_chunk_length)
 
         logger.info(f"Text split into {len(chunks)} chunks")
 
@@ -266,39 +219,149 @@ def correct_transcription_text(text, metadata, api_key=None, use_ai=True):
     corrected_metadata = []
 
     for idx, chunk in enumerate(metadata):
-        segments = chunk.get("segments", [])
-        logger.debug(f"Processing chunk {idx+1}: segments={len(segments)}")
-        timestamps_data = []
-
-        for segment in segments:
-            start_time = format_timestamp(segment.get("start", 0))
-            end_time = format_timestamp(segment.get("end", 0))
-            segment_text = segment.get("text", "").strip()
-
-            if segment_text:
-                timestamps_data.append((start_time, end_time, segment_text))
-
-        # Sort timestamps and fix overlaps
-        logger.debug(f"Chunk {idx+1} timestamp data count: {len(timestamps_data)}")
-        fixed_timestamps = sort_timestamps_and_fix_overlaps(timestamps_data)
-        if len(fixed_timestamps) != len(timestamps_data):
-            logger.warning(f"Chunk {idx+1} timestamp count changed after correction: {len(timestamps_data)} -> {len(fixed_timestamps)}")
-
-        # Update metadata with corrected segments
-        updated_segments = []
-        for start_time, end_time, segment_text in fixed_timestamps:
-            updated_segments.append(
-                {
-                    "start": parse_timestamp(start_time),
-                    "end": parse_timestamp(end_time),
-                    "text": segment_text,
-                }
-            )
-
-        corrected_chunk = chunk.copy()
-        corrected_chunk["segments"] = updated_segments
+        corrected_chunk = _process_metadata_chunk(chunk, idx)
         corrected_metadata.append(corrected_chunk)
 
     logger.info("Text correction completed!")
     logger.debug(f"Correction completed: text length={len(corrected_text)}, metadata chunks={len(corrected_metadata)}")
     return corrected_text, corrected_metadata
+
+
+def _split_text_into_chunks(text: str, max_chunk_length: int) -> list:
+    """Split text into chunks with reduced nesting complexity"""
+    if len(text) <= max_chunk_length:
+        logger.debug("Text is within maximum length, no splitting needed")
+        return [text]
+
+    logger.debug(f"Text exceeds maximum length ({max_chunk_length}), starting split")
+    
+    # Try different splitting strategies
+    sentences = _try_split_strategies(text)
+    chunks = _build_chunks_from_sentences(sentences, max_chunk_length)
+    
+    logger.debug(f"Split completed: {len(chunks)} chunks created")
+    return chunks
+
+
+def _try_split_strategies(text: str) -> list:
+    """Try different text splitting strategies in order of preference"""
+    strategies = [
+        lambda t: re.split(r"[.!?]\s*", t),  # Sentences
+        lambda t: re.split(r",\s*", t),      # Phrases
+        lambda t: t.split(" ")               # Words
+    ]
+    
+    for strategy in strategies:
+        result = strategy(text)
+        if len(result) > 1:
+            return result
+    
+    return [text]  # Fallback
+
+
+def _build_chunks_from_sentences(sentences: list, max_length: int) -> list:
+    """Build chunks from sentences with word-level fallback"""
+    chunks = []
+    current_chunk = ""
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        
+        if _can_add_to_chunk(current_chunk, sentence, max_length):
+            current_chunk = _add_to_chunk(current_chunk, sentence)
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            current_chunk = _handle_long_sentence(sentence, max_length, chunks)
+    
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    return chunks
+
+
+def _can_add_to_chunk(current_chunk: str, sentence: str, max_length: int) -> bool:
+    """Check if sentence can be added to current chunk"""
+    test_chunk = current_chunk + (" " if current_chunk else "") + sentence
+    return len(test_chunk) <= max_length
+
+
+def _add_to_chunk(current_chunk: str, sentence: str) -> str:
+    """Add sentence to current chunk"""
+    return current_chunk + (" " if current_chunk else "") + sentence
+
+
+def _handle_long_sentence(sentence: str, max_length: int, chunks: list) -> str:
+    """Handle sentences that are longer than max_length"""
+    if len(sentence) <= max_length:
+        return sentence
+    
+    # Split long sentence by words
+    words = sentence.split(" ")
+    temp_chunk = ""
+    
+    for word in words:
+        if len(temp_chunk + " " + word) <= max_length:
+            temp_chunk += (" " if temp_chunk else "") + word
+        else:
+            if temp_chunk:
+                chunks.append(temp_chunk)
+            temp_chunk = word
+    
+    return temp_chunk
+
+
+def _process_metadata_chunk(chunk: dict, idx: int) -> dict:
+    """Process a single metadata chunk with reduced nesting"""
+    segments = chunk.get("segments", [])
+    logger.debug(f"Processing chunk {idx+1}: segments={len(segments)}")
+    
+    # Extract timestamp data
+    timestamps_data = _extract_timestamp_data(segments)
+    
+    # Sort timestamps and fix overlaps
+    logger.debug(f"Chunk {idx+1} timestamp data count: {len(timestamps_data)}")
+    fixed_timestamps = sort_timestamps_and_fix_overlaps(timestamps_data)
+    
+    if len(fixed_timestamps) != len(timestamps_data):
+        logger.warning(f"Chunk {idx+1} timestamp count changed after correction: {len(timestamps_data)} -> {len(fixed_timestamps)}")
+    
+    # Create updated segments
+    updated_segments = _create_updated_segments(fixed_timestamps)
+    
+    # Return updated chunk
+    corrected_chunk = chunk.copy()
+    corrected_chunk["segments"] = updated_segments
+    return corrected_chunk
+
+
+def _extract_timestamp_data(segments: list) -> list:
+    """Extract timestamp data from segments"""
+    timestamps_data = []
+    
+    for segment in segments:
+        start_time = format_timestamp(segment.get("start", 0))
+        end_time = format_timestamp(segment.get("end", 0))
+        segment_text = segment.get("text", "").strip()
+        
+        if segment_text:
+            timestamps_data.append((start_time, end_time, segment_text))
+    
+    return timestamps_data
+
+
+def _create_updated_segments(fixed_timestamps: list) -> list:
+    """Create updated segments from fixed timestamp data"""
+    updated_segments = []
+    
+    for start_time, end_time, segment_text in fixed_timestamps:
+        updated_segments.append({
+            "start": parse_timestamp(start_time),
+            "end": parse_timestamp(end_time),
+            "text": segment_text,
+        })
+    
+    return updated_segments
