@@ -4,7 +4,8 @@ Centralized settings management using pydantic
 
 from functools import lru_cache
 from typing import List
-from pydantic import BaseSettings, Field, field_validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -42,10 +43,11 @@ class Settings(BaseSettings):
     # Performance Configuration
     max_workers: int = Field(4, env="MAX_WORKERS")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
     
     @field_validator("groq_api_key")
     @classmethod
