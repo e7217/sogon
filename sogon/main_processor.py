@@ -11,6 +11,7 @@ from .downloader import download_youtube_audio
 from .transcriber import transcribe_audio
 from .utils import create_output_directory, save_subtitle_and_metadata
 from .audio_manager import AudioFileManager
+from .config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,8 @@ def file_to_subtitle(
         logger.info("Generating subtitles with Groq Whisper Turbo...")
         
         # Speech recognition (including metadata)
-        subtitle_text, metadata = transcribe_audio(file_path)
+        settings = get_settings()
+        subtitle_text, metadata = transcribe_audio(file_path, api_key=settings.groq_api_key)
         
         if not subtitle_text:
             logger.error("Speech recognition failed.")
@@ -89,6 +91,7 @@ def file_to_subtitle(
             subtitle_format,
             correction_enabled=enable_correction,
             use_ai_correction=use_ai_correction,
+            api_key=settings.groq_api_key,
         )
         
         if result and len(result) == 4:
@@ -182,7 +185,8 @@ def youtube_to_subtitle(
         logger.info("Generating subtitles with Groq Whisper Turbo...")
 
         # Speech recognition (including metadata)
-        subtitle_text, metadata = transcribe_audio(audio_path)
+        settings = get_settings()
+        subtitle_text, metadata = transcribe_audio(audio_path, api_key=settings.groq_api_key)
 
         if not subtitle_text:
             logger.error("Speech recognition failed.")
@@ -198,6 +202,7 @@ def youtube_to_subtitle(
             subtitle_format,
             correction_enabled=enable_correction,
             use_ai_correction=use_ai_correction,
+            api_key=settings.groq_api_key,
         )
 
         # Handle audio file using AudioFileManager

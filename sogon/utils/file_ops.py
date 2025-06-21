@@ -1,5 +1,5 @@
 """
-Utility functions
+File operations utility functions
 """
 
 import os
@@ -7,7 +7,7 @@ import json
 import re
 import logging
 from datetime import datetime
-from .corrector import format_timestamp, correct_transcription_text
+from ..corrector import format_timestamp, correct_transcription_text
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ def save_subtitle_and_metadata(
     format="txt",
     correction_enabled=True,
     use_ai_correction=True,
+    api_key=None,
 ):
     """
     Save subtitles and metadata to files (including correction features)
@@ -116,7 +117,7 @@ def save_subtitle_and_metadata(
             try:
                 # Text correction
                 corrected_text, corrected_metadata = correct_transcription_text(
-                    text, metadata, use_ai=use_ai_correction
+                    text, metadata, api_key=api_key, use_ai=use_ai_correction
                 )
 
                 # Save corrected files
