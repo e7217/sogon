@@ -9,6 +9,13 @@ from datetime import datetime
 import uuid
 
 
+class JobType(Enum):
+    """Job type enumeration"""
+    
+    YOUTUBE_URL = "youtube_url"
+    LOCAL_FILE = "local_file"
+
+
 class JobStatus(Enum):
     """Job processing status enumeration"""
     
@@ -21,6 +28,7 @@ class JobStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    NOT_FOUND = "not_found"
     
     @property
     def is_terminal(self) -> bool:
@@ -73,8 +81,10 @@ class ProcessingJob:
     """Represents a processing job with status and metadata"""
     
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    job_type: Optional[JobType] = None
     input_path: str = ""
     output_directory: Optional[str] = None
+    actual_output_dir: Optional[str] = None
     status: JobStatus = JobStatus.PENDING
     progress: Optional[JobProgress] = None
     
@@ -278,5 +288,5 @@ class JobResult:
         return self.corrected_files is not None and len(self.corrected_files) > 0
     
     def __str__(self) -> str:
-        status = "✅" if self.success else "❌"
+        status = "SUCCESS" if self.success else "FAILED"
         return f"JobResult {status} for {self.job_id[:8]}"
