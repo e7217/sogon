@@ -57,11 +57,12 @@ def file_to_subtitle(
             logger.error(f"File not found: {file_path}")
             return None, None, None
         
-        # Check if it's a valid audio file
-        valid_extensions = ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac']
+        # Check if it's a valid audio/video file
+        settings = get_settings()
+        valid_extensions = ['.' + fmt for fmt in settings.audio_formats + settings.video_formats]
         file_ext = Path(file_path).suffix.lower()
         if file_ext not in valid_extensions:
-            logger.error(f"Unsupported audio format: {file_ext}. Supported formats: {', '.join(valid_extensions)}")
+            logger.error(f"Unsupported file format: {file_ext}. Supported formats: {', '.join(valid_extensions)}")
             return None, None, None
         
         # Get filename without extension for output naming

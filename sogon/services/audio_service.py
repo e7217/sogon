@@ -4,9 +4,11 @@ Audio service implementation
 
 import asyncio
 import os
+import subprocess
+import tempfile
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from .interfaces import AudioService
@@ -80,12 +82,13 @@ class AudioServiceImpl(AudioService):
             chunks = []
             total_chunks = len(chunk_paths)
             
-            for i, (chunk_path, start_time) in enumerate(chunk_paths):
+            for i, chunk_path in enumerate(chunk_paths):
                 chunk_file_path = Path(chunk_path)
                 if chunk_file_path.exists():
                     chunk_stat = chunk_file_path.stat()
-                    # Estimate chunk duration (simplified)
+                    # Calculate start time and duration for this chunk
                     chunk_duration = audio_file.duration_seconds / total_chunks
+                    start_time = i * chunk_duration
                     
                     chunk = AudioChunk(
                         path=chunk_file_path,
@@ -142,6 +145,68 @@ class AudioServiceImpl(AudioService):
         except Exception as e:
             logger.error(f"Synchronous audio splitting failed: {e}")
             return []
+    
+    async def extract_audio_from_video(self, video_path: Path, output_dir: Optional[Path] = None) -> Path:
+        """Extract audio from video file using FFmpeg"""
+        try:
+            if not video_path.exists():
+                raise AudioProcessingError(f"Video file not found: {video_path}")
+            
+            # Determine output directory
+            if output_dir is None:
+                output_dir = Path(tempfile.mkdtemp())
+            
+            # Generate output audio file path
+            audio_filename = f"{video_path.stem}_extracted.m4a"
+            audio_path = output_dir / audio_filename
+            
+            # FFmpeg command to extract audio
+            cmd = [
+                "ffmpeg", "-y",  # -y to overwrite output files
+                "-i", str(video_path),  # Input video file
+                "-vn",  # Disable video
+                "-acodec", "aac",  # Use AAC codec for compatibility
+                "-ab", "128k",  # Audio bitrate
+                "-map", "0:a?",  # Map first audio stream if exists (? makes it optional)
+                str(audio_path)  # Output audio file
+            ]
+            
+            # Run extraction in thread executor
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                self.executor,
+                self._run_ffmpeg_command,
+                cmd
+            )
+            
+            if not audio_path.exists():
+                raise AudioProcessingError(f"Audio extraction failed - output file not created: {audio_path}")
+            
+            logger.info(f"Successfully extracted audio from {video_path} to {audio_path}")
+            return audio_path
+            
+        except Exception as e:
+            logger.error(f"Failed to extract audio from video {video_path}: {e}")
+            raise AudioProcessingError(f"Video to audio extraction failed: {e}")
+    
+    def _run_ffmpeg_command(self, cmd: List[str]) -> None:
+        """Run FFmpeg command synchronously"""
+        try:
+            logger.info(f"Running FFmpeg command: {' '.join(cmd)}")
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=False,  # Don't capture output to see progress
+                text=True,
+                timeout=1800  # 30 minute timeout for large files
+            )
+            logger.info("FFmpeg command succeeded")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg command failed with return code {e.returncode}")
+            raise AudioProcessingError(f"FFmpeg extraction failed: return code {e.returncode}")
+        except subprocess.TimeoutExpired:
+            logger.error("FFmpeg command timed out (30 minutes)")
+            raise AudioProcessingError("Video processing timed out")
     
     def __del__(self):
         """Cleanup executor on deletion"""
