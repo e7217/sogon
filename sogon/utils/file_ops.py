@@ -164,6 +164,7 @@ def _save_subtitle_by_format(file_path: str, text: str, metadata: list, format: 
     format_handlers = {
         "txt": _save_txt_format,
         "srt": _save_srt_format,
+        "vtt": _save_vtt_format,
         "json": _save_json_format
     }
     
@@ -181,12 +182,67 @@ def _save_txt_format(file_path: str, text: str, metadata: list) -> None:
 
 
 def _save_srt_format(file_path: str, text: str, metadata: list) -> None:
-    """Save as SRT format"""
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write("1\n")
-        f.write("00:00:00,000 --> 99:59:59,999\n")
-        f.write(text)
-        f.write("\n")
+    """Save as SRT format with proper timestamps"""
+    try:
+        timestamps_data = extract_timestamps_and_text(metadata)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            if timestamps_data:
+                # Generate proper SRT with timestamps
+                for i, (start_time, end_time, segment_text) in enumerate(timestamps_data, 1):
+                    # Convert seconds to SRT time format (HH:MM:SS,mmm)
+                    start_srt = _seconds_to_srt_time(start_time)
+                    end_srt = _seconds_to_srt_time(end_time)
+                    
+                    f.write(f"{i}\n")
+                    f.write(f"{start_srt} --> {end_srt}\n")
+                    f.write(f"{segment_text.strip()}\n\n")
+            else:
+                # Fallback: single subtitle block
+                f.write("1\n")
+                f.write("00:00:00,000 --> 99:59:59,999\n")
+                f.write(text)
+                f.write("\n")
+    except Exception as e:
+        logger.warning(f"Failed to generate timestamped SRT, using fallback: {e}")
+        # Fallback to simple format
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("1\n")
+            f.write("00:00:00,000 --> 99:59:59,999\n")
+            f.write(text)
+            f.write("\n")
+
+
+def _save_vtt_format(file_path: str, text: str, metadata: list) -> None:
+    """Save as VTT format with proper timestamps"""
+    try:
+        timestamps_data = extract_timestamps_and_text(metadata)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("WEBVTT\n\n")
+            
+            if timestamps_data:
+                # Generate proper VTT with timestamps
+                for start_time, end_time, segment_text in timestamps_data:
+                    # Convert seconds to VTT time format (HH:MM:SS.mmm)
+                    start_vtt = _seconds_to_vtt_time(start_time)
+                    end_vtt = _seconds_to_vtt_time(end_time)
+                    
+                    f.write(f"{start_vtt} --> {end_vtt}\n")
+                    f.write(f"{segment_text.strip()}\n\n")
+            else:
+                # Fallback: single subtitle block
+                f.write("00:00:00.000 --> 99:59:59.999\n")
+                f.write(text)
+                f.write("\n")
+    except Exception as e:
+        logger.warning(f"Failed to generate timestamped VTT, using fallback: {e}")
+        # Fallback to simple format
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("WEBVTT\n\n")
+            f.write("00:00:00.000 --> 99:59:59.999\n")
+            f.write(text)
+            f.write("\n")
 
 
 def _save_json_format(file_path: str, text: str, metadata: list) -> None:
@@ -205,4 +261,22 @@ def _save_json_format(file_path: str, text: str, metadata: list) -> None:
     }
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, indent=2, ensure_ascii=False)
+
+
+def _seconds_to_srt_time(seconds: float) -> str:
+    """Convert seconds to SRT time format (HH:MM:SS,mmm)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    milliseconds = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+
+
+def _seconds_to_vtt_time(seconds: float) -> str:
+    """Convert seconds to VTT time format (HH:MM:SS.mmm)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    milliseconds = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}.{milliseconds:03d}"
 

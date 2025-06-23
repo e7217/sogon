@@ -169,15 +169,33 @@ class WorkflowServiceImpl(WorkflowService):
             if not file_path.exists():
                 raise JobError(f"File not found: {file_path}")
             
-            # Step 2: Get audio file info
-            audio_file = await self.audio_service.get_audio_info(file_path)
+            # Step 2: Check if file is video and extract audio if needed
+            file_extension = file_path.suffix.lstrip('.').lower()
             
-            # Step 3: Validate audio format
+            if file_extension in self.settings.video_formats:
+                # Video file - extract audio first
+                logger.info(f"Detected video file, extracting audio from {file_path}")
+                # Create a temporary directory for audio extraction
+                import tempfile
+                temp_dir = Path(tempfile.mkdtemp())
+                audio_path = await self.audio_service.extract_audio_from_video(
+                    file_path, temp_dir
+                )
+                audio_file = await self.audio_service.get_audio_info(audio_path)
+                # Mark for cleanup after processing
+                cleanup_extracted_audio = True
+            else:
+                # Regular audio file
+                audio_file = await self.audio_service.get_audio_info(file_path)
+                cleanup_extracted_audio = False
+            
+            # Step 3: Validate audio format (check both audio and video formats)
+            all_supported_formats = self.settings.audio_formats + self.settings.video_formats
             is_valid = await self.audio_service.validate_format(
-                audio_file, self.settings.audio_formats
+                audio_file, all_supported_formats
             )
-            if not is_valid:
-                raise JobError(f"Unsupported audio format: {audio_file.format}")
+            if not is_valid and file_extension not in self.settings.video_formats:
+                raise JobError(f"Unsupported file format: {file_extension}")
             
             # Step 4: Create output directory
             actual_output_dir = await self.file_service.create_output_directory(
@@ -187,6 +205,14 @@ class WorkflowServiceImpl(WorkflowService):
             
             # Step 5: Process audio file
             await self._process_audio_file(job, audio_file, audio_file.stem)
+            
+            # Step 6: Cleanup extracted audio if needed
+            if cleanup_extracted_audio and audio_file.path.exists():
+                try:
+                    audio_file.path.unlink()
+                    logger.info(f"Cleaned up extracted audio: {audio_file.path}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup extracted audio: {e}")
             
             # Mark job as completed
             job.status = JobStatus.COMPLETED

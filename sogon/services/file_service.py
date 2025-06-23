@@ -22,9 +22,24 @@ class FileServiceImpl(FileService):
         filename: str, 
         format: str = "txt"
     ) -> Path:
-        """Save transcription to file - placeholder implementation"""
+        """Save transcription to file in specified format"""
         file_path = output_dir / f"{filename}.{format}"
-        await self.file_repository.save_text_file(transcription.text, file_path)
+        
+        # Generate content based on format
+        if format == "txt":
+            content = transcription.text
+        elif format == "srt":
+            content = transcription.to_srt()
+        elif format == "vtt":
+            content = transcription.to_vtt()
+        elif format == "json":
+            # For JSON, use save_json_file directly
+            await self.file_repository.save_json_file(transcription.to_dict(), file_path)
+            return file_path
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+        
+        await self.file_repository.save_text_file(content, file_path)
         return file_path
     
     async def save_metadata(

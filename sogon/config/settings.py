@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     max_chunk_size_mb: int = Field(24, env="MAX_CHUNK_SIZE_MB")
     chunk_timeout_seconds: int = Field(120, env="CHUNK_TIMEOUT_SECONDS")
     audio_formats: List[str] = Field(["mp3", "m4a", "wav"], env="AUDIO_FORMATS")
+    video_formats: List[str] = Field(["mp4", "avi", "mov", "wmv", "flv", "mkv", "webm"], env="VIDEO_FORMATS")
     audio_quality: str = Field("128k", env="AUDIO_QUALITY")
     
     # YouTube Download Configuration
@@ -73,6 +74,18 @@ class Settings(BaseSettings):
         for fmt in v:
             if fmt not in supported_formats:
                 raise ValueError(f"Unsupported audio format: {fmt}")
+        return v
+    
+    @field_validator("video_formats")
+    @classmethod
+    def validate_video_formats(cls, v):
+        if isinstance(v, str):
+            # Handle comma-separated string from env var
+            v = [fmt.strip() for fmt in v.split(",")]
+        supported_formats = ["mp4", "avi", "mov", "wmv", "flv", "mkv", "webm"]
+        for fmt in v:
+            if fmt not in supported_formats:
+                raise ValueError(f"Unsupported video format: {fmt}")
         return v
     
     @field_validator("log_level")
