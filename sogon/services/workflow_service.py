@@ -362,6 +362,6 @@ class WorkflowServiceImpl(WorkflowService):
             language=translation_result.target_language.value,
             duration=original_transcription.duration,
             segments=transcription_segments,
-            model_name=f"translation_{translation_result.model_used}",
-            processing_time=translation_result.processing_time
+            model_used=f"translation_{translation_result.model_used}",
+            confidence=original_transcription.confidence
         )

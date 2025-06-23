@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "groq>=0.26.0",
+    "openai>=1.58.1",
     "python-dotenv>=1.0.0",
     "yt-dlp>=2024.3.10",
     "pydub>=0.25.1",

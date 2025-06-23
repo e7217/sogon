@@ -89,6 +89,11 @@ class TranslationService(ABC):
         pass
     
     @abstractmethod
+    async def translate_batch(self, texts: List[str], target_language: SupportedLanguage, source_language: str = None) -> List[TranslationResult]:
+        """Translate multiple texts concurrently"""
+        pass
+    
+    @abstractmethod
     async def detect_language(self, text: str) -> str:
         """Detect source language of text"""
         pass

@@ -2,11 +2,11 @@
 Translation service implementation using LLM
 """
 
+import asyncio
 import logging
 import time
-from typing import List, Optional
-import groq
-from groq import Groq
+from typing import List
+from openai import AsyncOpenAI
 
 from .interfaces import TranslationService
 from ..models.translation import TranslationResult, TranslationRequest, SupportedLanguage, TranslationSegment
@@ -22,11 +22,14 @@ class TranslationError(SogonError):
 
 
 class TranslationServiceImpl(TranslationService):
-    """Implementation of TranslationService using Groq LLM"""
+    """Implementation of TranslationService using OpenAI SDK"""
     
-    def __init__(self, api_key: str, model: str = "llama-3.1-70b-versatile"):
-        self.client = Groq(api_key=api_key)
+    def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1", model: str = "gpt-4o-mini", temperature: float = 0.3, max_concurrent_requests: int = 10):
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
+        self.temperature = temperature
+        self.max_concurrent_requests = max_concurrent_requests
+        self.semaphore = asyncio.Semaphore(max_concurrent_requests)
         self.supported_languages = list(SupportedLanguage)
     
     async def translate_text(
@@ -45,15 +48,16 @@ class TranslationServiceImpl(TranslationService):
             prompt = self._create_translation_prompt(text, target_language, source_language)
             
             # Call LLM for translation
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self._get_system_prompt()},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=4000
-            )
+            async with self.semaphore:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": self._get_system_prompt()},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=4000
+                )
             
             translated_text = response.choices[0].message.content.strip()
             processing_time = time.time() - start_time
@@ -75,6 +79,172 @@ class TranslationServiceImpl(TranslationService):
             logger.error(f"Translation failed: {e}")
             raise TranslationError(f"Translation failed: {e}")
     
+    async def translate_batch(
+        self, 
+        texts: List[str], 
+        target_language: SupportedLanguage,
+        source_language: str = None,
+        chunk_size: int = None
+    ) -> List[TranslationResult]:
+        """Translate multiple texts concurrently with chunking support"""
+        if not texts:
+            return []
+        
+        # Auto-detect source language from first text if not provided
+        if not source_language:
+            source_language = await self.detect_language(texts[0])
+        
+        # Use default chunk size if not provided (2x concurrent requests for better throughput)
+        if chunk_size is None:
+            chunk_size = self.max_concurrent_requests * 2
+        
+        # Process in chunks if the batch is large
+        if len(texts) > chunk_size:
+            logger.info(f"Large batch detected ({len(texts)} texts), processing in chunks of {chunk_size}")
+            return await self._translate_large_batch(texts, target_language, source_language, chunk_size)
+        
+        # Process normal-sized batch
+        return await self._translate_chunk(texts, target_language, source_language)
+    
+    async def _translate_large_batch(
+        self, 
+        texts: List[str], 
+        target_language: SupportedLanguage,
+        source_language: str,
+        chunk_size: int
+    ) -> List[TranslationResult]:
+        """Process large batch in chunks"""
+        all_results = []
+        total_chunks = (len(texts) + chunk_size - 1) // chunk_size
+        
+        for i in range(0, len(texts), chunk_size):
+            chunk = texts[i:i + chunk_size]
+            chunk_num = (i // chunk_size) + 1
+            
+            logger.info(f"Processing chunk {chunk_num}/{total_chunks} ({len(chunk)} texts)")
+            
+            chunk_results = await self._translate_chunk(chunk, target_language, source_language)
+            all_results.extend(chunk_results)
+            
+            # Small delay between chunks to avoid overwhelming the API
+            if chunk_num < total_chunks:
+                await asyncio.sleep(0.1)
+        
+        return all_results
+    
+    async def _translate_chunk(
+        self, 
+        texts: List[str], 
+        target_language: SupportedLanguage,
+        source_language: str
+    ) -> List[TranslationResult]:
+        """Translate a single chunk of texts"""
+        start_time = time.time()
+        
+        # Create translation tasks
+        tasks = []
+        for text in texts:
+            if text.strip():
+                task = self._translate_single_text(text, target_language, source_language)
+                tasks.append(task)
+            else:
+                # Handle empty text
+                tasks.append(asyncio.create_task(self._create_empty_result(text, target_language, source_language)))
+        
+        # Execute all translations concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results and handle exceptions
+        translation_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Translation failed for text {i}: {result}")
+                # Create fallback result
+                fallback_result = TranslationResult(
+                    original_text=texts[i],
+                    translated_text=texts[i],  # Fallback to original
+                    source_language=source_language,
+                    target_language=target_language,
+                    model_used=self.model,
+                    metadata={"error": str(result)}
+                )
+                translation_results.append(fallback_result)
+            else:
+                translation_results.append(result)
+        
+        chunk_time = time.time() - start_time
+        total_chars = sum(len(text) for text in texts)
+        logger.info(f"Chunk translation completed: {len(texts)} texts, {total_chars} chars in {chunk_time:.2f}s (avg: {chunk_time/len(texts):.2f}s per text)")
+        
+        return translation_results
+    
+    async def _translate_single_text(
+        self, 
+        text: str, 
+        target_language: SupportedLanguage, 
+        source_language: str,
+        max_retries: int = 3
+    ) -> TranslationResult:
+        """Internal method for single text translation with retry logic"""
+        start_time = time.time()
+        
+        # Create translation prompt
+        prompt = self._create_translation_prompt(text, target_language, source_language)
+        
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Call LLM for translation with semaphore
+                async with self.semaphore:
+                    response = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": self._get_system_prompt()},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=self.temperature,
+                        max_tokens=4000
+                    )
+                
+                translated_text = response.choices[0].message.content.strip()
+                processing_time = time.time() - start_time
+                
+                return TranslationResult(
+                    original_text=text,
+                    translated_text=translated_text,
+                    source_language=source_language,
+                    target_language=target_language,
+                    model_used=self.model,
+                    processing_time=processing_time
+                )
+                
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries:
+                    wait_time = (2 ** attempt) * 0.5  # Exponential backoff: 0.5, 1, 2 seconds
+                    logger.warning(f"Translation attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"Translation failed after {max_retries + 1} attempts: {e}")
+                    raise last_exception
+    
+    async def _create_empty_result(
+        self, 
+        text: str, 
+        target_language: SupportedLanguage, 
+        source_language: str
+    ) -> TranslationResult:
+        """Create result for empty text"""
+        return TranslationResult(
+            original_text=text,
+            translated_text=text,
+            source_language=source_language,
+            target_language=target_language,
+            model_used=self.model,
+            processing_time=0.0
+        )
+    
     async def translate_transcription(
         self, 
         transcription: TranscriptionResult, 
@@ -87,24 +257,38 @@ class TranslationServiceImpl(TranslationService):
             # Auto-detect source language
             source_language = await self.detect_language(transcription.text)
             
-            # Translate segments individually to preserve timestamps
+            # Extract all segment texts for batch translation
+            segment_texts = []
+            segment_indices = []
             translated_segments = []
             
             if transcription.segments:
-                for segment in transcription.segments:
+                for i, segment in enumerate(transcription.segments):
                     if segment.text.strip():
-                        segment_translation = await self.translate_text(
-                            segment.text, target_language
-                        )
-                        
-                        translated_segment = TranslationSegment(
-                            start_time=segment.start,
-                            end_time=segment.end,
-                            original_text=segment.text,
-                            translated_text=segment_translation.translated_text,
-                            confidence_score=segment.confidence
-                        )
-                        translated_segments.append(translated_segment)
+                        segment_texts.append(segment.text)
+                        segment_indices.append(i)
+                
+                # Batch translate all segments at once
+                if segment_texts:
+                    logger.info(f"Starting batch translation of {len(segment_texts)} segments")
+                    segment_translations = await self.translate_batch(
+                        segment_texts, target_language, source_language
+                    )
+                    
+                    # Map translations back to segments
+                    translation_map = dict(zip(segment_indices, segment_translations))
+                    
+                    for i, segment in enumerate(transcription.segments):
+                        if i in translation_map:
+                            translation = translation_map[i]
+                            translated_segment = TranslationSegment(
+                                start_time=segment.start,
+                                end_time=segment.end,
+                                original_text=segment.text,
+                                translated_text=translation.translated_text,
+                                confidence_score=segment.confidence
+                            )
+                            translated_segments.append(translated_segment)
             
             # Translate full text for completeness
             full_translation = await self.translate_text(
@@ -151,15 +335,16 @@ class TranslationServiceImpl(TranslationService):
 
 {text[:500]}"""  # Limit text length for detection
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a language detection system. Respond only with the ISO 639-1 language code."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=10
-            )
+            async with self.semaphore:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are a language detection system. Respond only with the ISO 639-1 language code."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=10
+                )
             
             detected_language = response.choices[0].message.content.strip().lower()
             

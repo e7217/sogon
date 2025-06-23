@@ -5,18 +5,21 @@ Text correction module
 import os
 import re
 import logging
-from groq import Groq
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 
-def fix_ai_based_corrections(text, api_key=None):
+def fix_ai_based_corrections(text, api_key=None, base_url="https://api.openai.com/v1", model="gpt-4o-mini", temperature=0.1):
     """
     AI-based text post-processing and correction
 
     Args:
         text (str): Original text
-        api_key (str): Groq API key
+        api_key (str): OpenAI API key
+        base_url (str): API base URL
+        model (str): Model to use for correction
+        temperature (float): Temperature for generation
 
     Returns:
         str: Corrected text
@@ -24,7 +27,7 @@ def fix_ai_based_corrections(text, api_key=None):
     logger.debug(f"AI correction started: text length={len(text)}, api_key provided={api_key is not None}")
     
     if not api_key:
-        api_key = os.getenv("GROQ_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
         logger.debug("API key retrieved from environment variable")
 
     if not api_key:
@@ -33,7 +36,7 @@ def fix_ai_based_corrections(text, api_key=None):
         return text
 
     try:
-        client = Groq(api_key=api_key)
+        client = OpenAI(api_key=api_key, base_url=base_url)
 
         # Split text into chunks if too long
         max_chunk_length = 1500
@@ -68,10 +71,10 @@ Original text:
 
 Please output only the corrected text (without explanations or additional descriptions):"""
 
-            logger.debug(f"Starting Groq API call for chunk {i+1}")
+            logger.debug(f"Starting OpenAI API call for chunk {i+1}")
             try:
                 response = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model=model,
                     messages=[
                         {
                             "role": "system",
@@ -79,7 +82,7 @@ Please output only the corrected text (without explanations or additional descri
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=0.1,
+                    temperature=temperature,
                     max_tokens=3000,
                 )
                 logger.debug(f"Chunk {i+1} API call successful")
@@ -184,7 +187,7 @@ def sort_timestamps_and_fix_overlaps(timestamps_data):
     return fixed_data
 
 
-def correct_transcription_text(text, metadata, api_key=None, use_ai=True):
+def correct_transcription_text(text, metadata, api_key=None, use_ai=True, base_url="https://api.openai.com/v1", model="gpt-4o-mini", temperature=0.1):
     """
     Correct transcribed text using AI
     """
@@ -198,7 +201,7 @@ def correct_transcription_text(text, metadata, api_key=None, use_ai=True):
     # AI-based correction
     if use_ai:
         logger.info("AI-based text correction...")
-        ai_corrected_text = fix_ai_based_corrections(text, api_key)
+        ai_corrected_text = fix_ai_based_corrections(text, api_key, base_url, model, temperature)
 
         # Use AI correction result only if it's 50% or more of original
         if ai_corrected_text and len(ai_corrected_text.strip()) > len(text) * 0.5:

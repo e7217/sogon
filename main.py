@@ -73,7 +73,10 @@ class ServiceContainer:
             # Import here to avoid circular imports
             from sogon.services.correction_service import CorrectionServiceImpl
             self._correction_service = CorrectionServiceImpl(
-                api_key=self.settings.groq_api_key
+                api_key=self.settings.openai_api_key,
+                base_url=self.settings.openai_base_url,
+                model=self.settings.openai_model,
+                temperature=self.settings.openai_temperature
             )
         return self._correction_service
     
@@ -106,8 +109,11 @@ class ServiceContainer:
             # Import here to avoid circular imports
             from sogon.services.translation_service import TranslationServiceImpl
             self._translation_service = TranslationServiceImpl(
-                api_key=self.settings.groq_api_key,
-                model=self.settings.translation_model
+                api_key=self.settings.openai_api_key,
+                base_url=self.settings.openai_base_url,
+                model=self.settings.openai_model,
+                temperature=self.settings.openai_temperature,
+                max_concurrent_requests=self.settings.openai_max_concurrent_requests
             )
         return self._translation_service
     
@@ -202,7 +208,7 @@ async def process_input(
             )
         
         # Wait for job completion (with timeout)
-        max_wait_seconds = 300  # 5 minutes
+        max_wait_seconds = services.settings.max_processing_timeout_seconds
         wait_seconds = 0
         
         while wait_seconds < max_wait_seconds:

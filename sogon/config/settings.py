@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     # API Configuration
     groq_api_key: str = Field(..., env="GROQ_API_KEY")
     
+    # OpenAI API Configuration (for text processing)
+    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
+    openai_base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL")
+    openai_model: str = Field("gpt-4o-mini", env="OPENAI_MODEL")
+    openai_temperature: float = Field(0.3, env="OPENAI_TEMPERATURE")
+    openai_max_concurrent_requests: int = Field(10, env="OPENAI_MAX_CONCURRENT_REQUESTS")
+    openai_max_tokens: int = Field(4000, env="OPENAI_MAX_TOKENS")
+    
     # Audio Processing Configuration
     max_chunk_size_mb: int = Field(24, env="MAX_CHUNK_SIZE_MB")
     chunk_timeout_seconds: int = Field(120, env="CHUNK_TIMEOUT_SECONDS")
@@ -50,6 +58,9 @@ class Settings(BaseSettings):
     # Performance Configuration
     max_workers: int = Field(4, env="MAX_WORKERS")
     
+    # Processing Timeout Configuration
+    max_processing_timeout_seconds: int = Field(1800, env="MAX_PROCESSING_TIMEOUT_SECONDS")  # 30 minutes
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -61,6 +72,13 @@ class Settings(BaseSettings):
     def validate_groq_api_key(cls, v):
         if not v or v.strip() == "":
             raise ValueError("GROQ_API_KEY is required")
+        return v.strip()
+    
+    @field_validator("openai_api_key")
+    @classmethod
+    def validate_openai_api_key(cls, v):
+        if not v or v.strip() == "":
+            raise ValueError("OPENAI_API_KEY is required")
         return v.strip()
     
     @field_validator("max_chunk_size_mb")
