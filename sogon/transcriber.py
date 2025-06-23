@@ -37,7 +37,7 @@ def _adjust_timestamps(adjusted_obj, original_obj, offset):
             adjusted_obj[attr] = timestamp + offset
 
 
-def transcribe_audio(audio_file_path, api_key=None):
+def transcribe_audio(audio_file_path, api_key=None, source_language=None):
     """
     Convert audio file to text using Groq Whisper Turbo
     Large files are automatically split for processing
@@ -45,6 +45,7 @@ def transcribe_audio(audio_file_path, api_key=None):
     Args:
         audio_file_path (str): Audio file path
         api_key (str): Groq API key (retrieved from environment variable if not provided)
+        source_language (str): Source language for transcription (auto-detect if None)
 
     Returns:
         tuple: (converted text, metadata list)
@@ -141,12 +142,19 @@ def transcribe_audio(audio_file_path, api_key=None):
                 logger.debug(f"Starting Whisper transcription for chunk {i+1}: {chunk_path}")
                 try:
                     with open(chunk_path, "rb") as audio_file:
-                        response = client.audio.transcriptions.create(
-                            file=audio_file,
-                            model="whisper-large-v3-turbo",
-                            response_format="verbose_json",  # Include metadata
-                            temperature=0.0,  # More consistent results
-                        )
+                        # Build transcription parameters
+                        transcription_params = {
+                            "file": audio_file,
+                            "model": "whisper-large-v3-turbo",
+                            "response_format": "verbose_json",  # Include metadata
+                            "temperature": 0.0,  # More consistent results
+                        }
+                        
+                        # Add language parameter if specified
+                        if source_language:
+                            transcription_params["language"] = source_language
+                            
+                        response = client.audio.transcriptions.create(**transcription_params)
                     logger.debug(f"Chunk {i+1} Whisper transcription successful")
                 except Exception as api_error:
                     logger.error(f"Chunk {i+1} Whisper transcription failed: {api_error}, cause: {api_error.__cause__ or 'unknown'}")

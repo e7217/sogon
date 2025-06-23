@@ -24,6 +24,7 @@ class JobStatus(Enum):
     SPLITTING = "splitting"
     TRANSCRIBING = "transcribing"
     CORRECTING = "correcting"
+    TRANSLATING = "translating"
     SAVING = "saving"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -43,6 +44,7 @@ class JobStatus(Enum):
             JobStatus.SPLITTING, 
             JobStatus.TRANSCRIBING,
             JobStatus.CORRECTING,
+            JobStatus.TRANSLATING,
             JobStatus.SAVING
         }
 
@@ -98,10 +100,14 @@ class ProcessingJob:
     enable_correction: bool = True
     use_ai_correction: bool = True
     keep_audio: bool = False
+    enable_translation: bool = False
+    translation_target_language: Optional[str] = None
+    whisper_source_language: Optional[str] = None  # None means auto-detect
     
     # Results
     original_files: Optional[Dict[str, str]] = None  # {type: path}
     corrected_files: Optional[Dict[str, str]] = None  # {type: path}
+    translated_files: Optional[Dict[str, str]] = None  # {type: path}
     error_message: Optional[str] = None
     
     # Metadata
@@ -141,12 +147,18 @@ class ProcessingJob:
         if self.started_at is None:
             self.started_at = datetime.now()
     
-    def complete(self, original_files: Dict[str, str], corrected_files: Optional[Dict[str, str]] = None) -> None:
+    def complete(
+        self, 
+        original_files: Dict[str, str], 
+        corrected_files: Optional[Dict[str, str]] = None,
+        translated_files: Optional[Dict[str, str]] = None
+    ) -> None:
         """Mark job as completed with results"""
         self.status = JobStatus.COMPLETED
         self.completed_at = datetime.now()
         self.original_files = original_files
         self.corrected_files = corrected_files
+        self.translated_files = translated_files
         self.error_message = None
     
     def fail(self, error_message: str) -> None:
@@ -202,8 +214,12 @@ class ProcessingJob:
             "enable_correction": self.enable_correction,
             "use_ai_correction": self.use_ai_correction,
             "keep_audio": self.keep_audio,
+            "enable_translation": self.enable_translation,
+            "translation_target_language": self.translation_target_language,
+            "whisper_source_language": self.whisper_source_language,
             "original_files": self.original_files,
             "corrected_files": self.corrected_files,
+            "translated_files": self.translated_files,
             "error_message": self.error_message,
             "metadata": self.metadata
         }
@@ -220,8 +236,12 @@ class ProcessingJob:
             enable_correction=data.get("enable_correction", True),
             use_ai_correction=data.get("use_ai_correction", True),
             keep_audio=data.get("keep_audio", False),
+            enable_translation=data.get("enable_translation", False),
+            translation_target_language=data.get("translation_target_language"),
+            whisper_source_language=data.get("whisper_source_language"),
             original_files=data.get("original_files"),
             corrected_files=data.get("corrected_files"),
+            translated_files=data.get("translated_files"),
             error_message=data.get("error_message"),
             metadata=data.get("metadata", {})
         )
@@ -259,6 +279,7 @@ class JobResult:
     success: bool
     original_files: Optional[Dict[str, str]] = None
     corrected_files: Optional[Dict[str, str]] = None
+    translated_files: Optional[Dict[str, str]] = None
     error_message: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -283,9 +304,20 @@ class JobResult:
             return None
         return self.corrected_files.get("subtitle")
     
+    @property
+    def translated_subtitle_file(self) -> Optional[str]:
+        """Get translated subtitle file path"""
+        if not self.translated_files:
+            return None
+        return self.translated_files.get("subtitle")
+    
     def has_correction(self) -> bool:
         """Check if correction was performed"""
         return self.corrected_files is not None and len(self.corrected_files) > 0
+    
+    def has_translation(self) -> bool:
+        """Check if translation was performed"""
+        return self.translated_files is not None and len(self.translated_files) > 0
     
     def __str__(self) -> str:
         status = "SUCCESS" if self.success else "FAILED"

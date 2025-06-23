@@ -9,9 +9,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from .interfaces import WorkflowService, AudioService, TranscriptionService, CorrectionService, YouTubeService, FileService
+from .interfaces import WorkflowService, AudioService, TranscriptionService, CorrectionService, YouTubeService, FileService, TranslationService
 from ..models.job import ProcessingJob, JobStatus, JobType
 from ..models.audio import AudioFile
+from ..models.translation import SupportedLanguage, TranslationResult
+from ..models.transcription import TranscriptionResult, TranscriptionSegment
 from ..exceptions.job import JobError
 from ..config import get_settings
 
@@ -27,13 +29,15 @@ class WorkflowServiceImpl(WorkflowService):
         transcription_service: TranscriptionService,
         correction_service: CorrectionService,
         youtube_service: YouTubeService,
-        file_service: FileService
+        file_service: FileService,
+        translation_service: Optional[TranslationService] = None
     ):
         self.audio_service = audio_service
         self.transcription_service = transcription_service
         self.correction_service = correction_service
         self.youtube_service = youtube_service
         self.file_service = file_service
+        self.translation_service = translation_service
         self.settings = get_settings()
         
         # In-memory job storage (in production, use repository)
@@ -46,7 +50,10 @@ class WorkflowServiceImpl(WorkflowService):
         format: str = "txt",
         enable_correction: bool = True,
         use_ai_correction: bool = True,
-        keep_audio: bool = False
+        keep_audio: bool = False,
+        enable_translation: bool = False,
+        translation_target_language: Optional[SupportedLanguage] = None,
+        whisper_source_language: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
         
@@ -60,6 +67,9 @@ class WorkflowServiceImpl(WorkflowService):
             enable_correction=enable_correction,
             use_ai_correction=use_ai_correction,
             keep_audio=keep_audio,
+            enable_translation=enable_translation,
+            translation_target_language=translation_target_language.value if translation_target_language else None,
+            whisper_source_language=whisper_source_language,
             status=JobStatus.PENDING,
             created_at=datetime.now()
         )
@@ -77,7 +87,10 @@ class WorkflowServiceImpl(WorkflowService):
         output_dir: Path,
         format: str = "txt",
         enable_correction: bool = True,
-        use_ai_correction: bool = True
+        use_ai_correction: bool = True,
+        enable_translation: bool = False,
+        translation_target_language: Optional[SupportedLanguage] = None,
+        whisper_source_language: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for local file processing"""
         
@@ -91,6 +104,9 @@ class WorkflowServiceImpl(WorkflowService):
             enable_correction=enable_correction,
             use_ai_correction=use_ai_correction,
             keep_audio=False,  # Local files are not downloaded
+            enable_translation=enable_translation,
+            translation_target_language=translation_target_language.value if translation_target_language else None,
+            whisper_source_language=whisper_source_language,
             status=JobStatus.PENDING,
             created_at=datetime.now()
         )
@@ -238,10 +254,10 @@ class WorkflowServiceImpl(WorkflowService):
             logger.info(f"Transcribing {len(chunks)} audio chunks")
             if len(chunks) == 1:
                 # Single file transcription
-                transcription = await self.transcription_service.transcribe_audio(audio_file)
+                transcription = await self.transcription_service.transcribe_audio(audio_file, job.whisper_source_language)
             else:
                 # Multiple chunks transcription
-                chunk_results = await self.transcription_service.transcribe_chunks(chunks)
+                chunk_results = await self.transcription_service.transcribe_chunks(chunks, job.whisper_source_language)
                 transcription = await self.transcription_service.combine_transcriptions(chunk_results)
             
             if not transcription.text.strip():
@@ -259,11 +275,14 @@ class WorkflowServiceImpl(WorkflowService):
             )
             
             # Step 4: Apply correction if enabled
+            final_transcription = transcription
             if job.enable_correction:
                 logger.info("Applying text correction")
+                job.status = JobStatus.CORRECTING
                 corrected_transcription = await self.correction_service.correct_transcription(
                     transcription, job.use_ai_correction
                 )
+                final_transcription = corrected_transcription
                 
                 # Save corrected version
                 await self.file_service.save_transcription(
@@ -276,7 +295,35 @@ class WorkflowServiceImpl(WorkflowService):
                     corrected_transcription.to_dict(), job.actual_output_dir, f"{base_name}_corrected"
                 )
             
-            # Step 5: Cleanup chunks if multiple were created
+            # Step 5: Apply translation if enabled
+            if job.enable_translation and job.translation_target_language and self.translation_service:
+                logger.info(f"Applying translation to {job.translation_target_language}")
+                job.status = JobStatus.TRANSLATING
+                
+                target_language = SupportedLanguage(job.translation_target_language)
+                translation_result = await self.translation_service.translate_transcription(
+                    final_transcription, target_language
+                )
+                
+                # Save translated version
+                suffix = "_translated"
+                if job.enable_correction:
+                    suffix = "_corrected_translated"
+                
+                # Convert translation result to transcription format for saving
+                translated_transcription = self._translation_to_transcription(translation_result, final_transcription)
+                
+                await self.file_service.save_transcription(
+                    translated_transcription, job.actual_output_dir, f"{base_name}{suffix}", job.subtitle_format
+                )
+                await self.file_service.save_timestamps(
+                    translated_transcription, job.actual_output_dir, f"{base_name}{suffix}"
+                )
+                await self.file_service.save_metadata(
+                    translation_result.to_dict(), job.actual_output_dir, f"{base_name}{suffix}"
+                )
+            
+            # Step 6: Cleanup chunks if multiple were created
             if len(chunks) > 1:
                 await self.audio_service.cleanup_chunks(chunks)
             
@@ -291,3 +338,30 @@ class WorkflowServiceImpl(WorkflowService):
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to cleanup chunks after error: {cleanup_error}")
             raise
+    
+    def _translation_to_transcription(
+        self, 
+        translation_result: TranslationResult, 
+        original_transcription: TranscriptionResult
+    ) -> TranscriptionResult:
+        """Convert translation result to transcription format for saving compatibility"""
+        # Convert translation segments to transcription segments
+        transcription_segments = []
+        if translation_result.segments:
+            for i, trans_seg in enumerate(translation_result.segments, 1):
+                transcription_segments.append(TranscriptionSegment(
+                    id=i,
+                    start=trans_seg.start_time,
+                    end=trans_seg.end_time,
+                    text=trans_seg.translated_text,
+                    confidence=trans_seg.confidence_score
+                ))
+        
+        return TranscriptionResult(
+            text=translation_result.translated_text,
+            language=translation_result.target_language.value,
+            duration=original_transcription.duration,
+            segments=transcription_segments,
+            model_used=f"translation_{translation_result.model_used}",
+            confidence=original_transcription.confidence
+        )

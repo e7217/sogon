@@ -10,6 +10,7 @@ from ..models.audio import AudioFile, AudioChunk, AudioProcessingMetadata
 from ..models.transcription import TranscriptionResult, TranscriptionSegment
 from ..models.job import ProcessingJob, JobStatus
 from ..models.correction import CorrectionResult
+from ..models.translation import TranslationResult, TranslationRequest, SupportedLanguage
 
 
 class AudioService(ABC):
@@ -40,12 +41,12 @@ class TranscriptionService(ABC):
     """Interface for audio transcription operations"""
     
     @abstractmethod
-    async def transcribe_audio(self, audio_file: AudioFile) -> TranscriptionResult:
+    async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None) -> TranscriptionResult:
         """Transcribe single audio file"""
         pass
     
     @abstractmethod
-    async def transcribe_chunks(self, chunks: List[AudioChunk]) -> List[TranscriptionResult]:
+    async def transcribe_chunks(self, chunks: List[AudioChunk], source_language: str = None) -> List[TranscriptionResult]:
         """Transcribe multiple audio chunks"""
         pass
     
@@ -66,6 +67,40 @@ class CorrectionService(ABC):
     @abstractmethod
     async def correct_transcription(self, transcription: TranscriptionResult, use_ai: bool = True) -> TranscriptionResult:
         """Correct transcription with metadata preservation"""
+        pass
+
+
+class TranslationService(ABC):
+    """Interface for text translation operations"""
+    
+    @abstractmethod
+    async def translate_text(self, text: str, target_language: SupportedLanguage) -> TranslationResult:
+        """Translate plain text"""
+        pass
+    
+    @abstractmethod
+    async def translate_transcription(self, transcription: TranscriptionResult, target_language: SupportedLanguage) -> TranslationResult:
+        """Translate transcription with metadata preservation"""
+        pass
+    
+    @abstractmethod
+    async def translate_request(self, request: TranslationRequest) -> TranslationResult:
+        """Process translation request"""
+        pass
+    
+    @abstractmethod
+    async def translate_batch(self, texts: List[str], target_language: SupportedLanguage, source_language: str = None) -> List[TranslationResult]:
+        """Translate multiple texts concurrently"""
+        pass
+    
+    @abstractmethod
+    async def detect_language(self, text: str) -> str:
+        """Detect source language of text"""
+        pass
+    
+    @abstractmethod
+    def get_supported_languages(self) -> List[SupportedLanguage]:
+        """Get list of supported languages"""
         pass
 
 
@@ -126,6 +161,17 @@ class FileService(ABC):
     async def create_output_directory(self, base_dir: Path, video_title: Optional[str] = None) -> Path:
         """Create output directory with timestamp"""
         pass
+    
+    @abstractmethod
+    async def save_translation(
+        self, 
+        translation: TranslationResult, 
+        output_dir: Path, 
+        filename: str, 
+        format: str = "txt"
+    ) -> Path:
+        """Save translation result to file"""
+        pass
 
 
 class WorkflowService(ABC):
@@ -139,7 +185,10 @@ class WorkflowService(ABC):
         format: str = "txt",
         enable_correction: bool = True,
         use_ai_correction: bool = True,
-        keep_audio: bool = False
+        keep_audio: bool = False,
+        enable_translation: bool = False,
+        translation_target_language: Optional[SupportedLanguage] = None,
+        whisper_source_language: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
         pass
@@ -151,7 +200,10 @@ class WorkflowService(ABC):
         output_dir: Path,
         format: str = "txt", 
         enable_correction: bool = True,
-        use_ai_correction: bool = True
+        use_ai_correction: bool = True,
+        enable_translation: bool = False,
+        translation_target_language: Optional[SupportedLanguage] = None,
+        whisper_source_language: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for local file processing"""
         pass
