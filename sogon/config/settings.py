@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     whisper_temperature: float = Field(0.0, env="WHISPER_TEMPERATURE")
     whisper_response_format: str = Field("verbose_json", env="WHISPER_RESPONSE_FORMAT")
     
+    # Translation Configuration
+    translation_model: str = Field("llama-3.3-70b-versatile", env="TRANSLATION_MODEL")
+    translation_temperature: float = Field(0.3, env="TRANSLATION_TEMPERATURE")
+    enable_translation_by_default: bool = Field(False, env="ENABLE_TRANSLATION_BY_DEFAULT")
+    default_translation_language: str = Field("ko", env="DEFAULT_TRANSLATION_LANGUAGE")
+    
     # File Management Configuration
     keep_temp_files: bool = Field(False, env="KEEP_TEMP_FILES")
     output_base_dir: str = Field("./result", env="OUTPUT_BASE_DIR")
@@ -95,6 +101,14 @@ class Settings(BaseSettings):
         if v.upper() not in valid_levels:
             raise ValueError(f"log_level must be one of: {valid_levels}")
         return v.upper()
+    
+    @field_validator("default_translation_language")
+    @classmethod
+    def validate_translation_language(cls, v):
+        valid_languages = ["ko", "en", "ja", "zh-cn", "zh-tw", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "th", "vi"]
+        if v not in valid_languages:
+            raise ValueError(f"default_translation_language must be one of: {valid_languages}")
+        return v
 
 
 @lru_cache()

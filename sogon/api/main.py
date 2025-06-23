@@ -12,6 +12,7 @@ from pydantic import BaseModel, HttpUrl
 
 from .config import config
 from .. import process_input_to_subtitle
+from ..models.translation import SupportedLanguage
 
 # Configure logging
 logging.basicConfig(
@@ -37,6 +38,9 @@ class TranscribeRequest(BaseModel):
     use_ai_correction: bool = True
     subtitle_format: str = "txt"
     keep_audio: bool = False
+    enable_translation: bool = False
+    translation_target_language: Optional[str] = None
+    whisper_source_language: Optional[str] = None
 
 
 class TranscribeResponse(BaseModel):
@@ -184,7 +188,10 @@ async def transcribe_upload(
     enable_correction: bool = Form(True),
     use_ai_correction: bool = Form(True),
     subtitle_format: str = Form("txt"),
-    keep_audio: bool = Form(False)
+    keep_audio: bool = Form(False),
+    enable_translation: bool = Form(False),
+    translation_target_language: Optional[str] = Form(None),
+    whisper_source_language: Optional[str] = Form(None)
 ):
     """Upload file for transcription"""
     job_id = str(uuid.uuid4())
@@ -271,6 +278,8 @@ async def download_result(job_id: str, file_type: str = "original"):
         file_path = result["original_files"][0]  # subtitle file
     elif file_type == "corrected" and result.get("corrected_files"):
         file_path = result["corrected_files"][0]  # corrected subtitle file
+    elif file_type == "translated" and result.get("translated_files"):
+        file_path = result["translated_files"][0]  # translated subtitle file
     else:
         raise HTTPException(status_code=404, detail="Requested file type not available")
     
@@ -303,6 +312,18 @@ async def delete_job(job_id: str):
     del jobs[job_id]
     
     return {"message": "Job deleted successfully"}
+
+
+@app.get("/api/v1/languages")
+async def get_supported_languages():
+    """Get list of supported translation languages"""
+    languages = []
+    for lang in SupportedLanguage:
+        languages.append({
+            "code": lang.value,
+            "name": lang.display_name
+        })
+    return {"supported_languages": languages}
 
 
 @app.get("/")

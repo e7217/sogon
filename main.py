@@ -15,7 +15,7 @@ from typing import Optional
 from sogon.config import get_settings
 from sogon.services.interfaces import (
     AudioService, TranscriptionService, CorrectionService, 
-    YouTubeService, FileService, WorkflowService
+    YouTubeService, FileService, WorkflowService, TranslationService
 )
 from sogon.services.audio_service import AudioServiceImpl
 from sogon.services.transcription_service import TranscriptionServiceImpl
@@ -23,6 +23,7 @@ from sogon.services.workflow_service import WorkflowServiceImpl
 from sogon.repositories.interfaces import FileRepository
 from sogon.repositories.file_repository import FileRepositoryImpl
 from sogon.models.job import JobStatus
+from sogon.models.translation import SupportedLanguage
 from sogon.exceptions.base import SogonError
 from sogon.utils.logging import setup_logging, get_logger
 
@@ -40,6 +41,7 @@ class ServiceContainer:
         self._correction_service: Optional[CorrectionService] = None
         self._youtube_service: Optional[YouTubeService] = None
         self._file_service: Optional[FileService] = None
+        self._translation_service: Optional[TranslationService] = None
         self._workflow_service: Optional[WorkflowService] = None
     
     @property
@@ -99,6 +101,17 @@ class ServiceContainer:
         return self._file_service
     
     @property
+    def translation_service(self) -> TranslationService:
+        if self._translation_service is None:
+            # Import here to avoid circular imports
+            from sogon.services.translation_service import TranslationServiceImpl
+            self._translation_service = TranslationServiceImpl(
+                api_key=self.settings.groq_api_key,
+                model=self.settings.translation_model
+            )
+        return self._translation_service
+    
+    @property
     def workflow_service(self) -> WorkflowService:
         if self._workflow_service is None:
             self._workflow_service = WorkflowServiceImpl(
@@ -106,7 +119,8 @@ class ServiceContainer:
                 transcription_service=self.transcription_service,
                 correction_service=self.correction_service,
                 youtube_service=self.youtube_service,
-                file_service=self.file_service
+                file_service=self.file_service,
+                translation_service=self.translation_service
             )
         return self._workflow_service
 
@@ -118,7 +132,10 @@ async def process_input(
     enable_correction: bool = True,
     use_ai_correction: bool = True,
     keep_audio: bool = False,
-    output_dir: Optional[str] = None
+    output_dir: Optional[str] = None,
+    enable_translation: bool = False,
+    translation_target_language: Optional[str] = None,
+    whisper_source_language: Optional[str] = None
 ) -> bool:
     """
     Process input using the new service architecture
@@ -131,6 +148,9 @@ async def process_input(
         use_ai_correction: Use AI-based correction
         keep_audio: Keep downloaded audio files
         output_dir: Custom output directory
+        enable_translation: Enable translation
+        translation_target_language: Target language for translation
+        whisper_source_language: Source language for Whisper transcription (auto-detect if None)
         
     Returns:
         bool: True if processing succeeded
@@ -138,6 +158,15 @@ async def process_input(
     try:
         # Determine output directory
         base_output_dir = Path(output_dir) if output_dir else Path(services.settings.output_base_dir)
+        
+        # Parse translation target language
+        target_lang = None
+        if enable_translation and translation_target_language:
+            try:
+                target_lang = SupportedLanguage(translation_target_language)
+            except ValueError:
+                logger.error(f"Unsupported translation language: {translation_target_language}")
+                return False
         
         # Check if input is URL or local file
         if services.youtube_service.is_valid_url(input_path):
@@ -148,7 +177,10 @@ async def process_input(
                 format=output_format,
                 enable_correction=enable_correction,
                 use_ai_correction=use_ai_correction,
-                keep_audio=keep_audio
+                keep_audio=keep_audio,
+                enable_translation=enable_translation,
+                translation_target_language=target_lang,
+                whisper_source_language=whisper_source_language
             )
         else:
             # Local file processing
@@ -163,7 +195,10 @@ async def process_input(
                 output_dir=base_output_dir,
                 format=output_format,
                 enable_correction=enable_correction,
-                use_ai_correction=use_ai_correction
+                use_ai_correction=use_ai_correction,
+                enable_translation=enable_translation,
+                translation_target_language=target_lang,
+                whisper_source_language=whisper_source_language
             )
         
         # Wait for job completion (with timeout)
@@ -209,6 +244,11 @@ Examples:
   python main.py "https://youtube.com/watch?v=..." 
   python main.py "audio.mp3" --format srt
   python main.py "video.mp4" --no-correction --output-dir ./results
+  python main.py "video.mp4" --translate --target-language ko
+  python main.py "video.mp4" --source-language en --translate -t ko
+  python main.py "korean_video.mp4" -s ko --format srt
+  python main.py "english_audio.mp3" --source-language en
+  python main.py --list-languages
         """
     )
     
@@ -248,6 +288,28 @@ Examples:
     )
     
     parser.add_argument(
+        "--translate",
+        action="store_true",
+        help="Enable translation of subtitles"
+    )
+    
+    parser.add_argument(
+        "--target-language", "-t",
+        help="Target language for translation (e.g., ko, en, ja, zh-cn)"
+    )
+    
+    parser.add_argument(
+        "--source-language", "-s",
+        help="Source language for Whisper transcription (auto-detect if not specified)"
+    )
+    
+    parser.add_argument(
+        "--list-languages",
+        action="store_true",
+        help="List supported translation languages and exit"
+    )
+    
+    parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO",
@@ -262,6 +324,14 @@ async def main():
     parser = setup_argument_parser()
     args = parser.parse_args()
     
+    # Handle --list-languages
+    if args.list_languages:
+        print("Supported Translation Languages:")
+        print("=" * 40)
+        for lang in SupportedLanguage:
+            print(f"  {lang.value:<6} - {lang.display_name}")
+        sys.exit(0)
+    
     # Setup logging
     setup_logging(console_level=args.log_level, file_level=args.log_level)
     
@@ -269,6 +339,21 @@ async def main():
     logger.info("=" * 60)
     
     try:
+        # Validate translation options
+        if args.translate:
+            if not args.target_language:
+                logger.error("--target-language is required when --translate is enabled")
+                logger.info("Use --list-languages to see supported languages")
+                sys.exit(1)
+            
+            # Validate target language
+            try:
+                SupportedLanguage(args.target_language)
+            except ValueError:
+                logger.error(f"Unsupported target language: {args.target_language}")
+                logger.info("Use --list-languages to see supported languages")
+                sys.exit(1)
+        
         # Initialize service container
         services = ServiceContainer()
         
@@ -278,6 +363,11 @@ async def main():
         logger.info(f"Text correction: {'disabled' if args.no_correction else 'enabled'}")
         logger.info(f"AI correction: {'disabled' if args.no_ai_correction else 'enabled'}")
         logger.info(f"Keep audio: {'yes' if args.keep_audio else 'no'}")
+        if args.translate:
+            logger.info(f"Translation: → {args.target_language}")
+        else:
+            logger.info("Translation: disabled")
+        logger.info(f"Whisper source language: {args.source_language or 'auto'}")
         logger.info("-" * 60)
         
         # Process input
@@ -288,7 +378,10 @@ async def main():
             enable_correction=not args.no_correction,
             use_ai_correction=not args.no_ai_correction,
             keep_audio=args.keep_audio,
-            output_dir=args.output_dir
+            output_dir=args.output_dir,
+            enable_translation=args.translate,
+            translation_target_language=args.target_language,
+            whisper_source_language=args.source_language
         )
         
         if success:

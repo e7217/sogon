@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 from .interfaces import FileService
 from ..models.transcription import TranscriptionResult
+from ..models.translation import TranslationResult
 from ..repositories.interfaces import FileRepository
 
 class FileServiceImpl(FileService):
@@ -107,3 +108,30 @@ class FileServiceImpl(FileService):
         output_dir = base_dir / dir_name
         await self.file_repository.create_directory(output_dir)
         return output_dir
+    
+    async def save_translation(
+        self, 
+        translation: TranslationResult, 
+        output_dir: Path, 
+        filename: str, 
+        format: str = "txt"
+    ) -> Path:
+        """Save translation result to file"""
+        file_path = output_dir / f"{filename}_translated.{format}"
+        
+        # Generate content based on format
+        if format == "txt":
+            content = translation.translated_text
+        elif format == "srt":
+            content = translation.to_srt()
+        elif format == "vtt":
+            content = translation.to_vtt()
+        elif format == "json":
+            # For JSON, use save_json_file directly
+            await self.file_repository.save_json_file(translation.to_dict(), file_path)
+            return file_path
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+        
+        await self.file_repository.save_text_file(content, file_path)
+        return file_path
