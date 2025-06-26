@@ -15,6 +15,7 @@ from .interfaces import AudioService
 from ..models.audio import AudioFile, AudioChunk
 from ..exceptions.audio import AudioProcessingError, UnsupportedAudioFormatError
 from ..downloader import split_audio_by_size
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class AudioServiceImpl(AudioService):
     def __init__(self, max_workers: int = 4):
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.settings = get_settings()
     
     async def get_audio_info(self, file_path: Path) -> AudioFile:
         """Get audio file information"""
@@ -75,7 +77,8 @@ class AudioServiceImpl(AudioService):
             chunk_paths = await loop.run_in_executor(
                 self.executor, 
                 self._split_audio_sync, 
-                str(audio_file.path)
+                str(audio_file.path),
+                max_size_mb
             )
             
             # Convert to AudioChunk objects
@@ -136,11 +139,11 @@ class AudioServiceImpl(AudioService):
         estimated_duration = (size_bytes * 8) / estimated_bitrate_bps
         return max(1.0, estimated_duration)  # At least 1 second
     
-    def _split_audio_sync(self, audio_path: str) -> List[tuple]:
+    def _split_audio_sync(self, audio_path: str, max_size_mb: float) -> List[tuple]:
         """Synchronous audio splitting wrapper"""
         try:
             # Use existing splitting function
-            chunks_info = split_audio_by_size(audio_path)
+            chunks_info = split_audio_by_size(audio_path, max_size_mb)
             return chunks_info
         except Exception as e:
             logger.error(f"Synchronous audio splitting failed: {e}")
@@ -166,7 +169,8 @@ class AudioServiceImpl(AudioService):
                 "-i", str(video_path),  # Input video file
                 "-vn",  # Disable video
                 "-acodec", "aac",  # Use AAC codec for compatibility
-                "-ab", "128k",  # Audio bitrate
+                "-ab", self.settings.audio_quality,  # Audio bitrate from settings
+                "-ac", "1",  # Convert to mono (1 channel)
                 "-map", "0:a?",  # Map first audio stream if exists (? makes it optional)
                 str(audio_path)  # Output audio file
             ]

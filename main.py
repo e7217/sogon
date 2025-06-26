@@ -202,6 +202,7 @@ async def process_input(
                 format=output_format,
                 enable_correction=enable_correction,
                 use_ai_correction=use_ai_correction,
+                keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
                 whisper_source_language=whisper_source_language

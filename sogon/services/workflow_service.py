@@ -88,6 +88,7 @@ class WorkflowServiceImpl(WorkflowService):
         format: str = "txt",
         enable_correction: bool = True,
         use_ai_correction: bool = True,
+        keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
         whisper_source_language: Optional[str] = None
@@ -103,7 +104,7 @@ class WorkflowServiceImpl(WorkflowService):
             subtitle_format=format,
             enable_correction=enable_correction,
             use_ai_correction=use_ai_correction,
-            keep_audio=False,  # Local files are not downloaded
+            keep_audio=keep_audio,
             enable_translation=enable_translation,
             translation_target_language=translation_target_language.value if translation_target_language else None,
             whisper_source_language=whisper_source_language,
@@ -222,13 +223,24 @@ class WorkflowServiceImpl(WorkflowService):
             # Step 5: Process audio file
             await self._process_audio_file(job, audio_file, audio_file.stem)
             
-            # Step 6: Cleanup extracted audio if needed
+            # Step 6: Handle extracted audio based on keep_audio setting
             if cleanup_extracted_audio and audio_file.path.exists():
+                if job.keep_audio:
+                    # Copy extracted audio to output directory
+                    import shutil
+                    output_audio_path = actual_output_dir / audio_file.path.name
+                    try:
+                        shutil.copy2(audio_file.path, output_audio_path)
+                        logger.info(f"Saved extracted audio to: {output_audio_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save extracted audio: {e}")
+                
+                # Always cleanup temp file
                 try:
                     audio_file.path.unlink()
-                    logger.info(f"Cleaned up extracted audio: {audio_file.path}")
+                    logger.debug(f"Cleaned up temporary audio: {audio_file.path}")
                 except Exception as e:
-                    logger.warning(f"Failed to cleanup extracted audio: {e}")
+                    logger.warning(f"Failed to cleanup temporary audio: {e}")
             
             # Mark job as completed
             job.status = JobStatus.COMPLETED
