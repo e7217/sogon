@@ -249,7 +249,7 @@ class TranslationServiceImpl(TranslationService):
         self, 
         transcription: TranscriptionResult, 
         target_language: SupportedLanguage,
-        source_language: Optional[str] = None
+        source_language: str | None = None
     ) -> TranslationResult:
         """Translate transcription with metadata preservation"""
         try:
