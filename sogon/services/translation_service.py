@@ -248,14 +248,16 @@ class TranslationServiceImpl(TranslationService):
     async def translate_transcription(
         self, 
         transcription: TranscriptionResult, 
-        target_language: SupportedLanguage
+        target_language: SupportedLanguage,
+        source_language: Optional[str] = None
     ) -> TranslationResult:
         """Translate transcription with metadata preservation"""
         try:
             start_time = time.time()
             
-            # Auto-detect source language
-            source_language = await self.detect_language(transcription.text)
+            # Use provided source language or auto-detect
+            if not source_language:
+                source_language = await self.detect_language(transcription.text)
             
             # Extract all segment texts for batch translation
             segment_texts = []
