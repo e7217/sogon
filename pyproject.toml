@@ -39,7 +39,7 @@ source = "vcs"
 tag-pattern = "v(?P<version>.+)" 
 
 [project.scripts]
-sogon = "main:main"
+sogon = "sogon.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sogon"]
