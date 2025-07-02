@@ -79,7 +79,7 @@ class TranslationService(ABC):
         pass
     
     @abstractmethod
-    async def translate_transcription(self, transcription: TranscriptionResult, target_language: SupportedLanguage) -> TranslationResult:
+    async def translate_transcription(self, transcription: TranscriptionResult, target_language: SupportedLanguage, source_language: Optional[str] = None) -> TranslationResult:
         """Translate transcription with metadata preservation"""
         pass
     

@@ -314,7 +314,7 @@ class WorkflowServiceImpl(WorkflowService):
                 
                 target_language = SupportedLanguage(job.translation_target_language)
                 translation_result = await self.translation_service.translate_transcription(
-                    final_transcription, target_language
+                    final_transcription, target_language, job.whisper_source_language
                 )
                 
                 # Save translated version
