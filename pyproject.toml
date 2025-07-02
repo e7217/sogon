@@ -1,13 +1,20 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "sogon"
 version = "0.1.0"
-description = "AI-powered subtitle generator from YouTube URLs or local audio files"
+description = "AI-powered subtitle generator from YouTube URLs or local media files"
+authors = [
+  { name="Changyong Um", email="eum6211@gmail.com" },
+]
 readme = "README.md"
 requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License"
+]
 dependencies = [
     "groq>=0.26.0",
     "openai>=1.58.1",
@@ -19,11 +26,21 @@ dependencies = [
     "uvicorn>=0.24.0",
     "python-multipart>=0.0.6",
     "pydantic-settings>=2.9.1",
+    "typer>=0.12.0",
 ]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+dynamic = ["version"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.vcs]
+tag-pattern = "v(?P<version>.+)" 
 
 [project.scripts]
 sogon = "main:main"
-sogon-api = "api_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sogon"]
@@ -41,3 +58,9 @@ dev = [
     "pytest-mock>=3.10.0",
     "coverage>=7.9.1",
 ]
+
+[tool.uv]
+package = true
+
+[project.urls]
+Repository = "https://github.com/e7217/sogon"

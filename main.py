@@ -6,10 +6,11 @@ Uses the new Phase 1 & Phase 2 architecture with services and dependency injecti
 
 import asyncio
 import sys
-import argparse
 import logging
 from pathlib import Path
 from typing import Optional
+import typer
+from typing_extensions import Annotated
 
 # Import new architecture components
 from sogon.config import get_settings
@@ -241,171 +242,126 @@ async def process_input(
         return False
 
 
-def setup_argument_parser() -> argparse.ArgumentParser:
-    """Setup command line argument parser"""
-    parser = argparse.ArgumentParser(
-        description="SOGON - YouTube/Audio to Subtitle Generator (Refactored)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python main.py "https://youtube.com/watch?v=..." 
-  python main.py "audio.mp3" --format srt
-  python main.py "video.mp4" --no-correction --output-dir ./results
-  python main.py "video.mp4" --translate --target-language ko
-  python main.py "video.mp4" --source-language en --translate -t ko
-  python main.py "korean_video.mp4" -s ko --format srt
-  python main.py "english_audio.mp3" --source-language en
-  python main.py --list-languages
-        """
-    )
-    
-    parser.add_argument(
-        "input",
-        help="YouTube URL or local audio/video file path"
-    )
-    
-    parser.add_argument(
-        "--format", "-f",
-        choices=["txt", "srt", "vtt", "json"],
-        default="txt",
-        help="Output subtitle format (default: txt)"
-    )
-    
-    parser.add_argument(
-        "--output-dir", "-o",
-        help="Output directory (default: ./result)"
-    )
-    
-    parser.add_argument(
-        "--no-correction",
-        action="store_true",
-        help="Disable text correction"
-    )
-    
-    parser.add_argument(
-        "--no-ai-correction",
-        action="store_true", 
-        help="Disable AI-based text correction"
-    )
-    
-    parser.add_argument(
-        "--keep-audio",
-        action="store_true",
-        help="Keep downloaded audio files"
-    )
-    
-    parser.add_argument(
-        "--translate",
-        action="store_true",
-        help="Enable translation of subtitles"
-    )
-    
-    parser.add_argument(
-        "--target-language", "-t",
-        help="Target language for translation (e.g., ko, en, ja, zh-cn)"
-    )
-    
-    parser.add_argument(
-        "--source-language", "-s",
-        help="Source language for Whisper transcription (auto-detect if not specified)"
-    )
-    
-    parser.add_argument(
-        "--list-languages",
-        action="store_true",
-        help="List supported translation languages and exit"
-    )
-    
-    parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-        help="Logging level (default: INFO)"
-    )
-    
-    return parser
+app = typer.Typer(
+    name="sogon",
+    help="SOGON - AI-powered subtitle generator from YouTube URLs or local audio files",
+    rich_markup_mode="rich",
+    add_completion=False,
+    epilog="""Examples:
+  sogon "https://youtube.com/watch?v=..." 
+  sogon "audio.mp3" --format srt
+  sogon "video.mp4" --no-correction --output-dir ./results
+  sogon "video.mp4" --translate --target-language ko
+"""
+)
 
 
-async def main():
-    """Main entry point"""
-    parser = setup_argument_parser()
-    args = parser.parse_args()
+@app.command("run")
+def process(
+    input_path: Annotated[str, typer.Argument(help="YouTube URL or local audio/video file path")],
+    format: Annotated[str, typer.Option("--format", "-f", help="Output subtitle format")] = "txt",
+    output_dir: Annotated[Optional[str], typer.Option("--output-dir", "-o", help="Output directory (default: ./result)")] = None,
+    no_correction: Annotated[bool, typer.Option("--no-correction", help="Disable text correction")] = False,
+    no_ai_correction: Annotated[bool, typer.Option("--no-ai-correction", help="Disable AI-based text correction")] = False,
+    keep_audio: Annotated[bool, typer.Option("--keep-audio", help="Keep downloaded audio files")] = False,
+    translate: Annotated[bool, typer.Option("--translate", help="Enable translation of subtitles")] = False,
+    target_language: Annotated[Optional[str], typer.Option("--target-language", "-t", help="Target language for translation (e.g., ko, en, ja, zh-cn)")] = None,
+    source_language: Annotated[Optional[str], typer.Option("--source-language", "-s", help="Source language for Whisper transcription (auto-detect if not specified)")] = None,
+    log_level: Annotated[str, typer.Option("--log-level", help="Logging level")] = "INFO"
+):
+    """Process video/audio file for subtitle generation"""
     
-    # Handle --list-languages
-    if args.list_languages:
-        print("Supported Translation Languages:")
-        print("=" * 40)
-        for lang in SupportedLanguage:
-            print(f"  {lang.value:<6} - {lang.display_name}")
-        sys.exit(0)
+    # Validate format
+    if format not in ["txt", "srt", "vtt", "json"]:
+        typer.echo(f"Error: Invalid format '{format}'. Choose from: txt, srt, vtt, json", err=True)
+        raise typer.Exit(1)
+    
+    # Validate log level
+    if log_level not in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+        typer.echo(f"Error: Invalid log level '{log_level}'. Choose from: DEBUG, INFO, WARNING, ERROR", err=True)
+        raise typer.Exit(1)
     
     # Setup logging
-    setup_logging(console_level=args.log_level, file_level=args.log_level)
+    setup_logging(console_level=log_level, file_level=log_level)
     
-    logger.info("SOGON - Subtitle Generator (Refactored Architecture)")
-    logger.info("=" * 60)
+    typer.echo("SOGON - Subtitle Generator (Refactored Architecture)")
+    typer.echo("=" * 60)
+    
+    # Validate translation options
+    if translate:
+        if not target_language:
+            typer.echo("Error: --target-language is required when --translate is enabled", err=True)
+            typer.echo("Use 'sogon list-languages' to see supported languages")
+            raise typer.Exit(1)
+        
+        # Validate target language
+        try:
+            SupportedLanguage(target_language)
+        except ValueError:
+            typer.echo(f"Error: Unsupported target language: {target_language}", err=True)
+            typer.echo("Use 'sogon list-languages' to see supported languages")
+            raise typer.Exit(1)
+    
+    # Initialize service container
+    services = ServiceContainer()
+    
+    # Log configuration
+    logger.info(f"Input: {input_path}")
+    logger.info(f"Format: {format.upper()}")
+    logger.info(f"Text correction: {'disabled' if no_correction else 'enabled'}")
+    logger.info(f"AI correction: {'disabled' if no_ai_correction else 'enabled'}")
+    logger.info(f"Keep audio: {'yes' if keep_audio else 'no'}")
+    if translate:
+        logger.info(f"Translation: → {target_language}")
+    else:
+        logger.info("Translation: disabled")
+    logger.info(f"Whisper source language: {source_language or 'auto'}")
+    logger.info("-" * 60)
     
     try:
-        # Validate translation options
-        if args.translate:
-            if not args.target_language:
-                logger.error("--target-language is required when --translate is enabled")
-                logger.info("Use --list-languages to see supported languages")
-                sys.exit(1)
-            
-            # Validate target language
-            try:
-                SupportedLanguage(args.target_language)
-            except ValueError:
-                logger.error(f"Unsupported target language: {args.target_language}")
-                logger.info("Use --list-languages to see supported languages")
-                sys.exit(1)
-        
-        # Initialize service container
-        services = ServiceContainer()
-        
-        # Log configuration
-        logger.info(f"Input: {args.input}")
-        logger.info(f"Format: {args.format.upper()}")
-        logger.info(f"Text correction: {'disabled' if args.no_correction else 'enabled'}")
-        logger.info(f"AI correction: {'disabled' if args.no_ai_correction else 'enabled'}")
-        logger.info(f"Keep audio: {'yes' if args.keep_audio else 'no'}")
-        if args.translate:
-            logger.info(f"Translation: → {args.target_language}")
-        else:
-            logger.info("Translation: disabled")
-        logger.info(f"Whisper source language: {args.source_language or 'auto'}")
-        logger.info("-" * 60)
-        
         # Process input
-        success = await process_input(
-            input_path=args.input,
-            services=services,
-            output_format=args.format,
-            enable_correction=not args.no_correction,
-            use_ai_correction=not args.no_ai_correction,
-            keep_audio=args.keep_audio,
-            output_dir=args.output_dir,
-            enable_translation=args.translate,
-            translation_target_language=args.target_language,
-            whisper_source_language=args.source_language
+        success = asyncio.run(
+            process_input(
+                input_path=input_path,
+                services=services,
+                output_format=format,
+                enable_correction=not no_correction,
+                use_ai_correction=not no_ai_correction,
+                keep_audio=keep_audio,
+                output_dir=output_dir,
+                enable_translation=translate,
+                translation_target_language=target_language,
+                whisper_source_language=source_language
+            )
         )
         
         if success:
-            logger.info("Processing completed successfully!")
-            sys.exit(0)
+            typer.echo("Processing completed successfully!", color=typer.colors.GREEN)
         else:
-            logger.error("Processing failed!")
-            sys.exit(1)
+            typer.echo("Processing failed!", err=True, color=typer.colors.RED)
+            raise typer.Exit(1)
             
     except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        sys.exit(130)
+        typer.echo("\nInterrupted by user", color=typer.colors.YELLOW)
+        raise typer.Exit(130)
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        sys.exit(1)
+        typer.echo(f"Fatal error: {e}", err=True, color=typer.colors.RED)
+        raise typer.Exit(1)
+
+
+@app.command("list-languages")
+def list_languages():
+    """List supported translation languages"""
+    typer.echo("Supported Translation Languages:")
+    typer.echo("=" * 40)
+    for lang in SupportedLanguage:
+        typer.echo(f"  {lang.value:<6} - {lang.display_name}")
+
+
+def main():
+    """Main entry point for CLI"""
+    app()
 
 
 if __name__ == "__main__":
-    # Run the async main function
-    asyncio.run(main())
+    main()
