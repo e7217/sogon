@@ -4,7 +4,6 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sogon"
-version = "0.1.0"
 description = "AI-powered subtitle generator from YouTube URLs or local media files"
 authors = [
   { name="Changyong Um", email="eum6211@gmail.com" },
