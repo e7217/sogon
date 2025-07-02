@@ -11,31 +11,62 @@
 - **지능형 텍스트 보정**: 패턴 기반 + AI 기반 이중 보정
 - **체계적인 출력**: 원본/보정본 분리 저장
 
-## 빠른 시작
+## 설치
 
-### 1. 환경 설정
+### 방법 1: pipx로 설치 (권장)
 
 ```bash
-# 의존성 설치
+# pipx로 전역 설치
+pipx install sogon
+
+# CLI 도구 사용
+sogon run "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+### 패키지 관리
+
+```bash
+# 최신 버전으로 업그레이드
+pipx upgrade sogon
+
+# 설치된 버전 확인
+pipx list
+
+# 제거
+pipx uninstall sogon
+
+# 재설치 (필요시)
+pipx reinstall sogon
+```
+
+### 방법 2: 개발 환경 설정
+
+```bash
+# 저장소 클론 및 의존성 설치
+git clone <repository-url>
+cd sogon
 uv sync
 ```
 
-### 2. API 키 설정
+## 빠른 시작
 
-`.env` 파일을 생성하고 Groq API 키를 설정하세요:
+### 1. API 키 설정
+
+`.env` 파일을 생성하고 API 키를 설정하세요:
 
 ```bash
 GROQ_API_KEY=your_groq_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here  # 선택사항: AI 텍스트 보정용
 ```
 
-### 3. 실행
+### 2. 기본 사용법
 
 ```bash
 # 동영상 URL 처리
-python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
+sogon run "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # 로컬 미디어 파일 처리
-python main.py "/path/to/video/file.mp4"
+sogon run "/path/to/video/file.mp4"
 ```
 
 ## 시스템 아키텍처
@@ -97,8 +128,19 @@ result/
 ### 기존 파일 보정
 도구는 기존 음성 변환 파일을 AI 기반으로 개선하는 기능을 제공합니다.
 
-### 설정 옵션
-보정 기능, 출력 형식, 처리 동작을 제어하는 다양한 옵션을 사용할 수 있습니다.
+### CLI 옵션
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--format`, `-f` | 출력 자막 형식 (txt, srt, vtt, json) | txt |
+| `--output-dir`, `-o` | 사용자 정의 출력 디렉토리 | ./result |
+| `--no-correction` | 텍스트 보정 비활성화 | False |
+| `--no-ai-correction` | AI 기반 텍스트 보정 비활성화 | False |
+| `--keep-audio` | 다운로드한 오디오 파일 보관 | False |
+| `--translate` | 자막 번역 활성화 | False |
+| `--target-language`, `-t` | 번역 대상 언어 | None |
+| `--source-language`, `-s` | Whisper용 소스 언어 | 자동 감지 |
+| `--log-level` | 로깅 레벨 (DEBUG, INFO, WARNING, ERROR) | INFO |
 
 ## 에러 처리
 
@@ -106,15 +148,58 @@ result/
 - 실패 시 부분 결과 저장
 - 임시 파일 자동 정리
 
-## 사용 예시
+## CLI 사용 예시
 
 ### 기본 사용
 ```bash
 # 동영상 URL 처리
-python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
+sogon run "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # 로컬 미디어 파일 처리
-python main.py "/path/to/video.mp4"
+sogon run "/path/to/video/file.mp4"
+```
+
+### 고급 옵션
+```bash
+# 출력 형식 지정
+sogon run "video.mp4" --format srt
+
+# 텍스트 보정 비활성화
+sogon run "video.mp4" --no-correction
+
+# 사용자 정의 출력 디렉토리 설정
+sogon run "video.mp4" --output-dir ./my-results
+
+# 다운로드한 오디오 파일 보관
+sogon run "https://youtube.com/watch?v=..." --keep-audio
+
+# 한국어로 번역 활성화
+sogon run "video.mp4" --translate --target-language ko
+
+# 더 나은 전사를 위한 소스 언어 설정
+sogon run "video.mp4" --source-language en
+
+# 로깅 레벨 조정
+sogon run "video.mp4" --log-level DEBUG
+```
+
+### 번역 기능
+```bash
+# 지원되는 언어 목록 확인
+sogon list-languages
+
+# 다양한 언어로 번역
+sogon run "video.mp4" --translate --target-language en  # 영어
+sogon run "video.mp4" --translate --target-language ko  # 한국어
+```
+
+### 출력 형식
+```bash
+# 다양한 자막 형식
+sogon run "video.mp4" --format txt   # 일반 텍스트 (기본값)
+sogon run "video.mp4" --format srt   # SubRip 자막 형식
+sogon run "video.mp4" --format vtt   # WebVTT 형식
+sogon run "video.mp4" --format json  # 메타데이터 포함 JSON 형식
 ```
 
 
