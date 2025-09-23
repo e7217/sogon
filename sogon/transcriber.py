@@ -37,7 +37,7 @@ def _adjust_timestamps(adjusted_obj, original_obj, offset):
             adjusted_obj[attr] = timestamp + offset
 
 
-def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=None, base_url=None):
+def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=None, base_url=None, temperature=None, response_format=None):
     """
     Convert audio file to text using OpenAI Whisper
     Large files are automatically split for processing
@@ -48,6 +48,8 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
         source_language (str): Source language for transcription (auto-detect if None)
         model (str): Whisper model to use (priority: API/CLI > env > default)
         base_url (str): OpenAI API base URL (priority: API/CLI > env > default)
+        temperature (float): Temperature for transcription (priority: API/CLI > env > default)
+        response_format (str): Response format for transcription (priority: API/CLI > env > default)
 
     Returns:
         tuple: (converted text, metadata list)
@@ -81,6 +83,24 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
             logger.debug("Using default OpenAI API base URL")
     else:
         logger.debug(f"Base URL provided via parameter: {base_url}")
+
+    # Temperature selection with priority: API/CLI > env > default
+    if temperature is None:
+        try:
+            temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.0"))
+            logger.debug(f"Temperature retrieved from environment or default: {temperature}")
+        except (ValueError, TypeError):
+            temperature = 0.0
+            logger.debug("Invalid temperature in environment, using default: 0.0")
+    else:
+        logger.debug(f"Temperature provided via parameter: {temperature}")
+
+    # Response format selection with priority: API/CLI > env > default
+    if not response_format:
+        response_format = os.getenv("OPENAI_RESPONSE_FORMAT", "verbose_json")
+        logger.debug(f"Response format retrieved from environment or default: {response_format}")
+    else:
+        logger.debug(f"Response format provided via parameter: {response_format}")
 
     # Initialize OpenAI client with timeout
     logger.debug("Initializing OpenAI client")
@@ -168,8 +188,8 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
                         transcription_params = {
                             "file": audio_file,
                             "model": model,
-                            "response_format": "verbose_json",  # Include metadata
-                            "temperature": 0.0,  # More consistent results
+                            "response_format": response_format,
+                            "temperature": temperature,
                         }
                         
                         # Add language parameter if specified
@@ -197,6 +217,20 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
                 # Collect metadata and adjust timestamps
                 segments = getattr(response, "segments", [])
                 words = getattr(response, "words", []) if hasattr(response, "words") else []
+
+                # Debug: Log response structure
+                logger.debug(f"Chunk {i+1} response type: {type(response)}")
+                logger.debug(f"Chunk {i+1} response attributes: {dir(response)}")
+                logger.debug(f"Chunk {i+1} segments type: {type(segments)}, value: {segments}")
+                logger.debug(f"Chunk {i+1} words type: {type(words)}, value: {words}")
+
+                # Safety check: Ensure segments and words are iterable
+                if segments is None:
+                    logger.warning(f"Chunk {i+1} segments is None, using empty list")
+                    segments = []
+                if words is None:
+                    logger.warning(f"Chunk {i+1} words is None, using empty list")
+                    words = []
                 
                 # Adjust segment timestamps with chunk offset
                 adjusted_segments = []
