@@ -85,9 +85,9 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
     # Initialize OpenAI client with timeout
     logger.debug("Initializing OpenAI client")
     if base_url:
-        client = OpenAI(api_key=api_key, base_url=base_url, timeout=300.0)  # 5분 타임아웃
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=300.0)  # 5 minute timeout
     else:
-        client = OpenAI(api_key=api_key, timeout=300.0)  # 5분 타임아웃
+        client = OpenAI(api_key=api_key, timeout=300.0)  # 5 minute timeout
 
     try:
         # Check file size and split if necessary
