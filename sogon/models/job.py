@@ -104,7 +104,7 @@ class ProcessingJob:
     translation_target_language: Optional[str] = None
     whisper_source_language: Optional[str] = None  # None means auto-detect
     whisper_model: Optional[str] = None  # None means use default
-    whisper_base_url: Optional[str] = None  # None means use default Groq API
+    whisper_base_url: Optional[str] = None  # None means use default API
     
     # Results
     original_files: Optional[Dict[str, str]] = None  # {type: path}
