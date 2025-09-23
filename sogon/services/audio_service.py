@@ -170,7 +170,8 @@ class AudioServiceImpl(AudioService):
                 "-vn",  # Disable video
                 "-acodec", "aac",  # Use AAC codec for compatibility
                 "-ab", self.settings.audio_quality,  # Audio bitrate from settings
-                "-ac", "1",  # Convert to mono (1 channel)
+                "-ac", str(self.settings.audio_channels),  # Convert to mono/stereo based on settings
+                "-ar", str(self.settings.audio_sample_rate),  # Sample rate for Whisper optimization
                 "-map", "0:a?",  # Map first audio stream if exists (? makes it optional)
                 str(audio_path)  # Output audio file
             ]

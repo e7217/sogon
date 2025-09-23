@@ -24,12 +24,19 @@ class TranslationError(SogonError):
 class TranslationServiceImpl(TranslationService):
     """Implementation of TranslationService using OpenAI SDK"""
     
-    def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1", model: str = "gpt-4o-mini", temperature: float = 0.3, max_concurrent_requests: int = 10):
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-        self.model = model
-        self.temperature = temperature
-        self.max_concurrent_requests = max_concurrent_requests
-        self.semaphore = asyncio.Semaphore(max_concurrent_requests)
+    def __init__(self, api_key: str = None, base_url: str = None, model: str = None, temperature: float = None, max_concurrent_requests: int = None):
+        from ..config import get_settings
+        settings = get_settings()
+
+        # Use provided values or fall back to translation-specific settings
+        self.api_key = api_key or settings.effective_translation_api_key
+        self.base_url = base_url or settings.translation_base_url
+        self.model = model or settings.translation_model
+        self.temperature = temperature if temperature is not None else settings.translation_temperature
+        self.max_concurrent_requests = max_concurrent_requests or settings.openai_max_concurrent_requests
+
+        self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=1200.0)
+        self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
         self.supported_languages = list(SupportedLanguage)
     
     async def translate_text(

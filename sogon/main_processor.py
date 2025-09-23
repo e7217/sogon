@@ -77,7 +77,7 @@ def file_to_subtitle(
         
         # Speech recognition (including metadata)
         settings = get_settings()
-        subtitle_text, metadata = transcribe_audio(file_path, api_key=settings.groq_api_key)
+        subtitle_text, metadata = transcribe_audio(file_path, api_key=settings.openai_api_key)
         
         if not subtitle_text:
             logger.error("Speech recognition failed.")
@@ -92,7 +92,7 @@ def file_to_subtitle(
             subtitle_format,
             correction_enabled=enable_correction,
             use_ai_correction=use_ai_correction,
-            api_key=settings.groq_api_key,
+            api_key=settings.openai_api_key,
         )
         
         if result and len(result) == 4:
@@ -187,7 +187,7 @@ def youtube_to_subtitle(
 
         # Speech recognition (including metadata)
         settings = get_settings()
-        subtitle_text, metadata = transcribe_audio(audio_path, api_key=settings.groq_api_key)
+        subtitle_text, metadata = transcribe_audio(audio_path, api_key=settings.openai_api_key)
 
         if not subtitle_text:
             logger.error("Speech recognition failed.")
@@ -203,7 +203,7 @@ def youtube_to_subtitle(
             subtitle_format,
             correction_enabled=enable_correction,
             use_ai_correction=use_ai_correction,
-            api_key=settings.groq_api_key,
+            api_key=settings.openai_api_key,
         )
 
         # Handle audio file using AudioFileManager

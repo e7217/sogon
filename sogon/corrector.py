@@ -36,7 +36,7 @@ def fix_ai_based_corrections(text, api_key=None, base_url="https://api.openai.co
         return text
 
     try:
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=1200.0)
 
         # Split text into chunks if too long
         max_chunk_length = 1500

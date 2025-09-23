@@ -41,12 +41,12 @@ class TranscriptionService(ABC):
     """Interface for audio transcription operations"""
     
     @abstractmethod
-    async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None) -> TranscriptionResult:
+    async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None, model: str = None, base_url: str = None) -> TranscriptionResult:
         """Transcribe single audio file"""
         pass
-    
+
     @abstractmethod
-    async def transcribe_chunks(self, chunks: List[AudioChunk], source_language: str = None) -> List[TranscriptionResult]:
+    async def transcribe_chunks(self, chunks: List[AudioChunk], source_language: str = None, model: str = None, base_url: str = None) -> List[TranscriptionResult]:
         """Transcribe multiple audio chunks"""
         pass
     
@@ -183,12 +183,14 @@ class WorkflowService(ABC):
         url: str,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = True,
-        use_ai_correction: bool = True,
+        enable_correction: bool = False,
+        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
-        whisper_source_language: Optional[str] = None
+        whisper_source_language: Optional[str] = None,
+        whisper_model: Optional[str] = None,
+        whisper_base_url: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
         pass
@@ -198,12 +200,15 @@ class WorkflowService(ABC):
         self,
         file_path: Path,
         output_dir: Path,
-        format: str = "txt", 
-        enable_correction: bool = True,
-        use_ai_correction: bool = True,
+        format: str = "txt",
+        enable_correction: bool = False,
+        use_ai_correction: bool = False,
+        keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
-        whisper_source_language: Optional[str] = None
+        whisper_source_language: Optional[str] = None,
+        whisper_model: Optional[str] = None,
+        whisper_base_url: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for local file processing"""
         pass

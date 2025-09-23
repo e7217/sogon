@@ -11,16 +11,39 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
-    # API Configuration
-    groq_api_key: str = Field(..., env="GROQ_API_KEY")
-    
-    # OpenAI API Configuration (for text processing)
+    # Legacy API Configuration (for backward compatibility)
+    groq_api_key: str = Field(None, env="GROQ_API_KEY")
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL")
     openai_model: str = Field("gpt-4o-mini", env="OPENAI_MODEL")
     openai_temperature: float = Field(0.3, env="OPENAI_TEMPERATURE")
     openai_max_concurrent_requests: int = Field(10, env="OPENAI_MAX_CONCURRENT_REQUESTS")
     openai_max_tokens: int = Field(4000, env="OPENAI_MAX_TOKENS")
+
+    # Transcription Service Configuration
+    transcription_provider: str = Field("groq", env="TRANSCRIPTION_PROVIDER")
+    transcription_api_key: str = Field(None, env="TRANSCRIPTION_API_KEY")
+    transcription_base_url: str = Field("https://api.groq.com/openai/v1", env="TRANSCRIPTION_BASE_URL")
+    transcription_model: str = Field("whisper-large-v3-turbo", env="TRANSCRIPTION_MODEL")
+    transcription_temperature: float = Field(0.0, env="TRANSCRIPTION_TEMPERATURE")
+    transcription_response_format: str = Field("verbose_json", env="TRANSCRIPTION_RESPONSE_FORMAT")
+
+    # Translation Service Configuration
+    translation_provider: str = Field("openai", env="TRANSLATION_PROVIDER")
+    translation_api_key: str = Field(None, env="TRANSLATION_API_KEY")
+    translation_base_url: str = Field("https://api.openai.com/v1", env="TRANSLATION_BASE_URL")
+    translation_model: str = Field("gpt-4o-mini", env="TRANSLATION_MODEL")
+    translation_temperature: float = Field(0.3, env="TRANSLATION_TEMPERATURE")
+    translation_max_tokens: int = Field(4000, env="TRANSLATION_MAX_TOKENS")
+
+    # Correction Service Configuration
+    correction_provider: str = Field("openai", env="CORRECTION_PROVIDER")
+    correction_api_key: str = Field(None, env="CORRECTION_API_KEY")
+    correction_base_url: str = Field("https://api.openai.com/v1", env="CORRECTION_BASE_URL")
+    correction_model: str = Field("gpt-4o-mini", env="CORRECTION_MODEL")
+    correction_temperature: float = Field(0.1, env="CORRECTION_TEMPERATURE")
+    correction_max_tokens: int = Field(4000, env="CORRECTION_MAX_TOKENS")
+    enable_correction_by_default: bool = Field(False, env="ENABLE_CORRECTION_BY_DEFAULT")
     
     # Audio Processing Configuration
     max_chunk_size_mb: int = Field(24, env="MAX_CHUNK_SIZE_MB")
@@ -28,20 +51,15 @@ class Settings(BaseSettings):
     audio_formats: List[str] = Field(["mp3", "m4a", "wav"], env="AUDIO_FORMATS")
     video_formats: List[str] = Field(["mp4", "avi", "mov", "wmv", "flv", "mkv", "webm"], env="VIDEO_FORMATS")
     audio_quality: str = Field("128k", env="AUDIO_QUALITY")
+    audio_sample_rate: int = Field(16000, env="AUDIO_SAMPLE_RATE")
+    audio_channels: int = Field(1, env="AUDIO_CHANNELS")  # 1=mono, 2=stereo
     
     # YouTube Download Configuration
     youtube_socket_timeout: int = Field(30, env="YOUTUBE_SOCKET_TIMEOUT")
     youtube_retries: int = Field(3, env="YOUTUBE_RETRIES")
     youtube_preferred_format: str = Field("m4a", env="YOUTUBE_PREFERRED_FORMAT")
     
-    # Transcription Configuration
-    whisper_model: str = Field("whisper-large-v3-turbo", env="WHISPER_MODEL")
-    whisper_temperature: float = Field(0.0, env="WHISPER_TEMPERATURE")
-    whisper_response_format: str = Field("verbose_json", env="WHISPER_RESPONSE_FORMAT")
-    
-    # Translation Configuration
-    translation_model: str = Field("llama-3.3-70b-versatile", env="TRANSLATION_MODEL")
-    translation_temperature: float = Field(0.3, env="TRANSLATION_TEMPERATURE")
+    # General Translation Configuration
     enable_translation_by_default: bool = Field(False, env="ENABLE_TRANSLATION_BY_DEFAULT")
     default_translation_language: str = Field("ko", env="DEFAULT_TRANSLATION_LANGUAGE")
     
@@ -66,13 +84,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False
     )
-    
-    @field_validator("groq_api_key")
-    @classmethod
-    def validate_groq_api_key(cls, v):
-        if not v or v.strip() == "":
-            raise ValueError("GROQ_API_KEY is required")
-        return v.strip()
     
     @field_validator("openai_api_key")
     @classmethod
@@ -127,6 +138,66 @@ class Settings(BaseSettings):
         if v not in valid_languages:
             raise ValueError(f"default_translation_language must be one of: {valid_languages}")
         return v
+
+    @field_validator("audio_sample_rate")
+    @classmethod
+    def validate_audio_sample_rate(cls, v):
+        valid_rates = [8000, 16000, 22050, 44100, 48000]
+        if v not in valid_rates:
+            raise ValueError(f"audio_sample_rate must be one of: {valid_rates}")
+        return v
+
+    @field_validator("audio_channels")
+    @classmethod
+    def validate_audio_channels(cls, v):
+        if v not in [1, 2]:
+            raise ValueError("audio_channels must be 1 (mono) or 2 (stereo)")
+        return v
+
+    @field_validator("transcription_provider")
+    @classmethod
+    def validate_transcription_provider(cls, v):
+        valid_providers = ["groq", "openai"]
+        if v not in valid_providers:
+            raise ValueError(f"transcription_provider must be one of: {valid_providers}")
+        return v
+
+    @field_validator("translation_provider")
+    @classmethod
+    def validate_translation_provider(cls, v):
+        valid_providers = ["openai", "azure", "anthropic"]
+        if v not in valid_providers:
+            raise ValueError(f"translation_provider must be one of: {valid_providers}")
+        return v
+
+    @field_validator("correction_provider")
+    @classmethod
+    def validate_correction_provider(cls, v):
+        valid_providers = ["openai", "azure", "anthropic"]
+        if v not in valid_providers:
+            raise ValueError(f"correction_provider must be one of: {valid_providers}")
+        return v
+
+    # Compatibility properties for backward compatibility
+    @property
+    def effective_transcription_api_key(self) -> str:
+        """Get effective transcription API key with fallback"""
+        if self.transcription_api_key:
+            return self.transcription_api_key
+        elif self.transcription_provider == "groq":
+            return self.groq_api_key
+        else:
+            return self.openai_api_key
+
+    @property
+    def effective_translation_api_key(self) -> str:
+        """Get effective translation API key with fallback"""
+        return self.translation_api_key or self.openai_api_key
+
+    @property
+    def effective_correction_api_key(self) -> str:
+        """Get effective correction API key with fallback"""
+        return self.correction_api_key or self.openai_api_key
 
 
 @lru_cache()

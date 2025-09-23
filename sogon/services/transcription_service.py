@@ -22,11 +22,11 @@ class TranscriptionServiceImpl(TranscriptionService):
     
     def __init__(self, api_key: str = None, max_workers: int = 4):
         self.settings = get_settings()
-        self.api_key = api_key or self.settings.groq_api_key
+        self.api_key = api_key or self.settings.effective_transcription_api_key
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
     
-    async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None) -> TranscriptionResult:
+    async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None, model: str = None, base_url: str = None) -> TranscriptionResult:
         """Transcribe single audio file"""
         try:
             logger.info(f"Starting transcription for {audio_file.name}")
@@ -37,7 +37,9 @@ class TranscriptionServiceImpl(TranscriptionService):
                 self.executor,
                 self._transcribe_sync,
                 str(audio_file.path),
-                source_language
+                source_language,
+                model,
+                base_url
             )
             
             if not text:
@@ -53,7 +55,7 @@ class TranscriptionServiceImpl(TranscriptionService):
             logger.error(f"Failed to transcribe {audio_file.path}: {e}")
             raise TranscriptionError(f"Transcription failed: {e}")
     
-    async def transcribe_chunks(self, chunks: List[AudioChunk], source_language: str = None) -> List[TranscriptionResult]:
+    async def transcribe_chunks(self, chunks: List[AudioChunk], source_language: str = None, model: str = None, base_url: str = None) -> List[TranscriptionResult]:
         """Transcribe multiple audio chunks"""
         try:
             logger.info(f"Starting transcription for {len(chunks)} chunks")
@@ -68,7 +70,7 @@ class TranscriptionServiceImpl(TranscriptionService):
                     size_bytes=chunk.size_bytes,
                     format=chunk.parent_file.format
                 )
-                task = self.transcribe_audio(chunk_audio, source_language)
+                task = self.transcribe_audio(chunk_audio, source_language, model, base_url)
                 tasks.append(task)
             
             # Wait for all transcriptions to complete
@@ -144,10 +146,20 @@ class TranscriptionServiceImpl(TranscriptionService):
             logger.error(f"Failed to combine transcription results: {e}")
             raise TranscriptionError(f"Failed to combine transcriptions: {e}")
     
-    def _transcribe_sync(self, audio_path: str, source_language: str = None) -> tuple:
+    def _transcribe_sync(self, audio_path: str, source_language: str = None, model: str = None, base_url: str = None) -> tuple:
         """Synchronous transcription wrapper"""
         try:
-            return transcribe_audio(audio_path, api_key=self.api_key, source_language=source_language)
+            # Use new transcription settings with fallbacks
+            effective_model = model or self.settings.transcription_model
+            effective_base_url = base_url or self.settings.transcription_base_url
+
+            return transcribe_audio(
+                audio_path,
+                api_key=self.api_key,
+                source_language=source_language,
+                model=effective_model,
+                base_url=effective_base_url
+            )
         except Exception as e:
             logger.error(f"Synchronous transcription failed: {e}")
             return "", []

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def download_youtube_audio(url, output_dir=None):
     """
-    Download audio from YouTube video
+    Download audio from YouTube video with optimized settings for Whisper
 
     Args:
         url (str): YouTube URL
@@ -25,17 +25,21 @@ def download_youtube_audio(url, output_dir=None):
     Returns:
         str: Downloaded audio file path
     """
+    from .config import get_settings
+
     if output_dir is None:
         output_dir = tempfile.mkdtemp()
 
-    # Configure yt-dlp options (download speed optimization)
+    settings = get_settings()
+
+    # Configure yt-dlp options with Whisper-optimized audio settings
     ydl_opts = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",  # Prefer m4a for speed improvement
         "extractaudio": True,
         "audioformat": "m4a",  # Keep original m4a format to avoid unnecessary conversion
         "outtmpl": os.path.join(output_dir, "%(title)s.%(ext)s"),
-        "socket_timeout": 30,  # Reduced socket timeout (default 60s → 30s)
-        "retries": 3,  # Reduced retry count (default 10 → 3)
+        "socket_timeout": settings.youtube_socket_timeout,
+        "retries": settings.youtube_retries,
         "fragment_retries": 3,  # Reduced fragment retry count
         "http_chunk_size": 5242880,  # Set HTTP chunk size to 5MB
         "concurrent_fragment_downloads": 4,  # 4 concurrent fragment downloads
@@ -43,7 +47,14 @@ def download_youtube_audio(url, output_dir=None):
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "m4a",  # Keep m4a format
-                "preferredquality": "128",  # Lower quality for speed improvement (192 → 128)
+                "preferredquality": settings.audio_quality,
+            },
+            {
+                "key": "FFmpegAudioFix",  # Fix audio metadata
+                "ffmpeg_opts": {
+                    "ar": str(settings.audio_sample_rate),  # Sample rate: 16kHz
+                    "ac": str(settings.audio_channels),     # Channels: mono
+                }
             }
         ],
     }
@@ -76,16 +87,16 @@ def download_youtube_audio(url, output_dir=None):
         return None
 
 
-def split_audio_by_size(audio_path, max_chunk_size_mb=24):
+def split_audio_by_size(audio_path, max_chunk_size_mb=None):
     """
     Split audio file into size-based chunks to ensure API compatibility
-    
+
     Uses ffmpeg directly to avoid memory issues with large files.
     Temporarily renames files with special characters to avoid subprocess issues.
 
     Args:
         audio_path (str): Audio file path
-        max_chunk_size_mb (int): Maximum chunk size in MB (default 24MB)
+        max_chunk_size_mb (int): Maximum chunk size in MB (uses config if not provided)
 
     Returns:
         list: List of split audio file paths
@@ -93,6 +104,11 @@ def split_audio_by_size(audio_path, max_chunk_size_mb=24):
     import subprocess
     import json
     import hashlib
+    from .config import get_settings
+
+    settings = get_settings()
+    if max_chunk_size_mb is None:
+        max_chunk_size_mb = settings.max_chunk_size_mb
     
     try:
         # Create a safe temporary filename for processing
@@ -157,14 +173,15 @@ def split_audio_by_size(audio_path, max_chunk_size_mb=24):
                 start_time = i * chunk_duration
                 chunk_path = os.path.join(temp_dir, f"{safe_base_name}_chunk_{i+1}.{chunk_format}")
                 
-                # Use ffmpeg to extract chunk directly (no memory loading)
+                # Use ffmpeg to extract chunk with Whisper-optimized settings
                 # Optimize parameter order: seek before input for better performance
                 cmd = [
-                    'ffmpeg', '-y', 
+                    'ffmpeg', '-y',
                     '-ss', str(start_time),  # Seek before input for efficiency
                     '-i', working_path,
                     '-t', str(round(chunk_duration, 2)),  # Round to avoid precision issues
-                    '-c', 'copy',  # Copy codec without re-encoding when possible
+                    '-ar', str(settings.audio_sample_rate),  # Resample to 16kHz for Whisper
+                    '-ac', str(settings.audio_channels),     # Convert to mono
                     '-avoid_negative_ts', 'make_zero',
                     chunk_path
                 ]

@@ -5,8 +5,6 @@ Uses the new Phase 1 & Phase 2 architecture with services and dependency injecti
 """
 
 import asyncio
-import sys
-import logging
 from pathlib import Path
 from typing import Optional
 import typer
@@ -63,7 +61,6 @@ class ServiceContainer:
     def transcription_service(self) -> TranscriptionService:
         if self._transcription_service is None:
             self._transcription_service = TranscriptionServiceImpl(
-                api_key=self.settings.groq_api_key,
                 max_workers=self.settings.max_workers
             )
         return self._transcription_service
@@ -73,12 +70,7 @@ class ServiceContainer:
         if self._correction_service is None:
             # Import here to avoid circular imports
             from sogon.services.correction_service import CorrectionServiceImpl
-            self._correction_service = CorrectionServiceImpl(
-                api_key=self.settings.openai_api_key,
-                base_url=self.settings.openai_base_url,
-                model=self.settings.openai_model,
-                temperature=self.settings.openai_temperature
-            )
+            self._correction_service = CorrectionServiceImpl()
         return self._correction_service
     
     @property
@@ -109,13 +101,7 @@ class ServiceContainer:
         if self._translation_service is None:
             # Import here to avoid circular imports
             from sogon.services.translation_service import TranslationServiceImpl
-            self._translation_service = TranslationServiceImpl(
-                api_key=self.settings.openai_api_key,
-                base_url=self.settings.openai_base_url,
-                model=self.settings.openai_model,
-                temperature=self.settings.openai_temperature,
-                max_concurrent_requests=self.settings.openai_max_concurrent_requests
-            )
+            self._translation_service = TranslationServiceImpl()
         return self._translation_service
     
     @property
@@ -142,11 +128,13 @@ async def process_input(
     output_dir: Optional[str] = None,
     enable_translation: bool = False,
     translation_target_language: Optional[str] = None,
-    whisper_source_language: Optional[str] = None
+    whisper_source_language: Optional[str] = None,
+    whisper_model: Optional[str] = None,
+    whisper_base_url: Optional[str] = None
 ) -> bool:
     """
     Process input using the new service architecture
-    
+
     Args:
         input_path: YouTube URL or local file path
         services: Service container with all dependencies
@@ -158,7 +146,9 @@ async def process_input(
         enable_translation: Enable translation
         translation_target_language: Target language for translation
         whisper_source_language: Source language for Whisper transcription (auto-detect if None)
-        
+        whisper_model: Whisper model to use for transcription
+        whisper_base_url: Whisper API base URL for transcription
+
     Returns:
         bool: True if processing succeeded
     """
@@ -187,7 +177,9 @@ async def process_input(
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
-                whisper_source_language=whisper_source_language
+                whisper_source_language=whisper_source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url
             )
         else:
             # Local file processing
@@ -206,7 +198,9 @@ async def process_input(
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
-                whisper_source_language=whisper_source_language
+                whisper_source_language=whisper_source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url
             )
         
         # Wait for job completion (with timeout)
@@ -248,10 +242,12 @@ app = typer.Typer(
     rich_markup_mode="rich",
     add_completion=False,
     epilog="""Examples:
-  sogon "https://youtube.com/watch?v=..." 
-  sogon "audio.mp3" --format srt
-  sogon "video.mp4" --no-correction --output-dir ./results
-  sogon "video.mp4" --translate --target-language ko
+  sogon run "https://youtube.com/watch?v=..."
+  sogon run "audio.mp3" --format srt
+  sogon run "video.mp4" --correction --output-dir ./results
+  sogon run "video.mp4" --translate --target-language ko
+  sogon run "video.mp4" --correction --ai-correction --translate --target-language ko
+  sogon run "video.mp4" --whisper-model whisper-1 --whisper-base-url https://api.openai.com/v1
 """
 )
 
@@ -261,12 +257,16 @@ def process(
     input_path: Annotated[str, typer.Argument(help="YouTube URL or local audio/video file path")],
     format: Annotated[str, typer.Option("--format", "-f", help="Output subtitle format")] = "txt",
     output_dir: Annotated[Optional[str], typer.Option("--output-dir", "-o", help="Output directory (default: ./result)")] = None,
-    no_correction: Annotated[bool, typer.Option("--no-correction", help="Disable text correction")] = False,
-    no_ai_correction: Annotated[bool, typer.Option("--no-ai-correction", help="Disable AI-based text correction")] = False,
+    correction: Annotated[bool, typer.Option("--correction", help="Enable text correction")] = False,
+    ai_correction: Annotated[bool, typer.Option("--ai-correction", help="Enable AI-based text correction")] = False,
     keep_audio: Annotated[bool, typer.Option("--keep-audio", help="Keep downloaded audio files")] = False,
     translate: Annotated[bool, typer.Option("--translate", help="Enable translation of subtitles")] = False,
     target_language: Annotated[Optional[str], typer.Option("--target-language", "-t", help="Target language for translation (e.g., ko, en, ja, zh-cn)")] = None,
     source_language: Annotated[Optional[str], typer.Option("--source-language", "-s", help="Source language for Whisper transcription (auto-detect if not specified)")] = None,
+    whisper_model: Annotated[Optional[str], typer.Option("--whisper-model", "-m", help="Whisper model to use (default: whisper-1)")] = None,
+    whisper_base_url: Annotated[Optional[str], typer.Option("--whisper-base-url", help="Whisper API base URL (default: OpenAI API)")] = None,
+    openai_model: Annotated[Optional[str], typer.Option("--openai-model", help="OpenAI model for correction/translation (default: gpt-4o-mini)")] = None,
+    openai_base_url: Annotated[Optional[str], typer.Option("--openai-base-url", help="OpenAI API base URL (default: https://api.openai.com/v1)")] = None,
     log_level: Annotated[str, typer.Option("--log-level", help="Logging level")] = "INFO"
 ):
     """Process video/audio file for subtitle generation"""
@@ -305,11 +305,15 @@ def process(
     # Initialize service container
     services = ServiceContainer()
     
+    # Determine effective correction settings
+    effective_correction = correction or services.settings.enable_correction_by_default
+    effective_ai_correction = ai_correction or (effective_correction and services.settings.enable_correction_by_default)
+
     # Log configuration
     logger.info(f"Input: {input_path}")
     logger.info(f"Format: {format.upper()}")
-    logger.info(f"Text correction: {'disabled' if no_correction else 'enabled'}")
-    logger.info(f"AI correction: {'disabled' if no_ai_correction else 'enabled'}")
+    logger.info(f"Text correction: {'enabled' if effective_correction else 'disabled'}")
+    logger.info(f"AI correction: {'enabled' if effective_ai_correction else 'disabled'}")
     logger.info(f"Keep audio: {'yes' if keep_audio else 'no'}")
     if translate:
         logger.info(f"Translation: → {target_language}")
@@ -325,13 +329,15 @@ def process(
                 input_path=input_path,
                 services=services,
                 output_format=format,
-                enable_correction=not no_correction,
-                use_ai_correction=not no_ai_correction,
+                enable_correction=effective_correction,
+                use_ai_correction=effective_ai_correction,
                 keep_audio=keep_audio,
                 output_dir=output_dir,
                 enable_translation=translate,
                 translation_target_language=target_language,
-                whisper_source_language=source_language
+                whisper_source_language=source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url
             )
         )
         
