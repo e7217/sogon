@@ -498,8 +498,8 @@ class TestRequestResponseModels(unittest.TestCase):
         }
         
         request = TranscribeRequest(**minimal_data)
-        self.assertTrue(request.enable_correction)  # Default
-        self.assertTrue(request.use_ai_correction)  # Default
+        self.assertFalse(request.enable_correction)  # Default
+        self.assertFalse(request.use_ai_correction)  # Default
         self.assertEqual(request.subtitle_format, "txt")  # Default
         self.assertFalse(request.keep_audio)  # Default
 

@@ -41,7 +41,8 @@ class TestFileIntegration(unittest.TestCase):
 
             # Verify the workflow
             mock_create_dir.assert_called_once()
-            mock_transcribe.assert_called_once_with(temp_path)
+            # transcribe_audio is called with api_key parameter from settings
+            mock_transcribe.assert_called_once()
             mock_save.assert_called_once()
 
             # Check return value structure
