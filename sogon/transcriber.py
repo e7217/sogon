@@ -4,7 +4,7 @@ Audio transcription module
 
 import os
 import logging
-from groq import Groq
+from openai import OpenAI
 from tqdm import tqdm
 from .downloader import split_audio_by_size
 
@@ -37,15 +37,17 @@ def _adjust_timestamps(adjusted_obj, original_obj, offset):
             adjusted_obj[attr] = timestamp + offset
 
 
-def transcribe_audio(audio_file_path, api_key=None, source_language=None):
+def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=None, base_url=None):
     """
-    Convert audio file to text using Groq Whisper Turbo
+    Convert audio file to text using OpenAI Whisper
     Large files are automatically split for processing
 
     Args:
         audio_file_path (str): Audio file path
-        api_key (str): Groq API key (retrieved from environment variable if not provided)
+        api_key (str): OpenAI API key (retrieved from environment variable if not provided)
         source_language (str): Source language for transcription (auto-detect if None)
+        model (str): Whisper model to use (priority: API/CLI > env > default)
+        base_url (str): OpenAI API base URL (priority: API/CLI > env > default)
 
     Returns:
         tuple: (converted text, metadata list)
@@ -54,18 +56,38 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None):
     
     # API key setup
     if not api_key:
-        api_key = os.getenv("GROQ_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
         logger.debug("API key retrieved from environment variable")
 
     if not api_key:
-        logger.error("GROQ_API_KEY is not set")
+        logger.error("OPENAI_API_KEY is not set")
         raise ValueError(
-            "Please set GROQ_API_KEY environment variable or provide api_key parameter."
+            "Please set OPENAI_API_KEY environment variable or provide api_key parameter."
         )
 
-    # Initialize Groq client
-    logger.debug("Initializing Groq client")
-    client = Groq(api_key=api_key)
+    # Model selection with priority: API/CLI > env > default
+    if not model:
+        model = os.getenv("OPENAI_MODEL", "whisper-1")
+        logger.debug(f"Model retrieved from environment or default: {model}")
+    else:
+        logger.debug(f"Model provided via parameter: {model}")
+
+    # Base URL selection with priority: API/CLI > env > default
+    if not base_url:
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if base_url:
+            logger.debug(f"Base URL retrieved from environment: {base_url}")
+        else:
+            logger.debug("Using default OpenAI API base URL")
+    else:
+        logger.debug(f"Base URL provided via parameter: {base_url}")
+
+    # Initialize OpenAI client with timeout
+    logger.debug("Initializing OpenAI client")
+    if base_url:
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=300.0)  # 5분 타임아웃
+    else:
+        client = OpenAI(api_key=api_key, timeout=300.0)  # 5분 타임아웃
 
     try:
         # Check file size and split if necessary
@@ -145,7 +167,7 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None):
                         # Build transcription parameters
                         transcription_params = {
                             "file": audio_file,
-                            "model": "whisper-large-v3-turbo",
+                            "model": model,
                             "response_format": "verbose_json",  # Include metadata
                             "temperature": 0.0,  # More consistent results
                         }

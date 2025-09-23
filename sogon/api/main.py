@@ -11,8 +11,19 @@ from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, HttpUrl
 
 from .config import config
-from .. import process_input_to_subtitle
 from ..models.translation import SupportedLanguage
+from ..models.job import JobStatus
+from ..config import get_settings
+from ..services.interfaces import (
+    AudioService, TranscriptionService, CorrectionService,
+    YouTubeService, FileService, WorkflowService, TranslationService
+)
+from ..services.audio_service import AudioServiceImpl
+from ..services.transcription_service import TranscriptionServiceImpl
+from ..services.workflow_service import WorkflowServiceImpl
+from ..repositories.interfaces import FileRepository
+from ..repositories.file_repository import FileRepositoryImpl
+import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -34,13 +45,15 @@ app = FastAPI(
 class TranscribeRequest(BaseModel):
     """Transcribe request model for URL input"""
     url: HttpUrl
-    enable_correction: bool = True
-    use_ai_correction: bool = True
+    enable_correction: bool = False
+    use_ai_correction: bool = False
     subtitle_format: str = "txt"
     keep_audio: bool = False
     enable_translation: bool = False
     translation_target_language: Optional[str] = None
     whisper_source_language: Optional[str] = None
+    whisper_model: Optional[str] = None
+    whisper_base_url: Optional[str] = None
 
 
 class TranscribeResponse(BaseModel):
@@ -70,6 +83,111 @@ class HealthResponse(BaseModel):
 
 # In-memory job storage (in production, use Redis or database)
 jobs = {}
+
+
+class APIServiceContainer:
+    """Dependency injection container for API services"""
+
+    def __init__(self):
+        self.settings = get_settings()
+        self._file_repository: Optional[FileRepository] = None
+        self._audio_service: Optional[AudioService] = None
+        self._transcription_service: Optional[TranscriptionService] = None
+        self._correction_service: Optional[CorrectionService] = None
+        self._youtube_service: Optional[YouTubeService] = None
+        self._file_service: Optional[FileService] = None
+        self._translation_service: Optional[TranslationService] = None
+        self._workflow_service: Optional[WorkflowService] = None
+
+    @property
+    def file_repository(self) -> FileRepository:
+        if self._file_repository is None:
+            self._file_repository = FileRepositoryImpl()
+        return self._file_repository
+
+    @property
+    def audio_service(self) -> AudioService:
+        if self._audio_service is None:
+            self._audio_service = AudioServiceImpl(
+                max_workers=self.settings.max_workers
+            )
+        return self._audio_service
+
+    @property
+    def transcription_service(self) -> TranscriptionService:
+        if self._transcription_service is None:
+            self._transcription_service = TranscriptionServiceImpl(
+                api_key=self.settings.openai_api_key,
+                max_workers=self.settings.max_workers
+            )
+        return self._transcription_service
+
+    @property
+    def correction_service(self) -> CorrectionService:
+        if self._correction_service is None:
+            if not self.settings.openai_api_key:
+                raise ValueError("OpenAI API key is required for correction service. Set OPENAI_API_KEY environment variable.")
+            from ..services.correction_service import CorrectionServiceImpl
+            self._correction_service = CorrectionServiceImpl(
+                api_key=self.settings.openai_api_key,
+                base_url=self.settings.openai_base_url,
+                model=self.settings.openai_model,
+                temperature=self.settings.openai_temperature
+            )
+        return self._correction_service
+
+    @property
+    def youtube_service(self) -> YouTubeService:
+        if self._youtube_service is None:
+            from ..services.youtube_service import YouTubeServiceImpl
+            self._youtube_service = YouTubeServiceImpl(
+                timeout=self.settings.youtube_socket_timeout,
+                retries=self.settings.youtube_retries,
+                preferred_format=self.settings.youtube_preferred_format
+            )
+        return self._youtube_service
+
+    @property
+    def file_service(self) -> FileService:
+        if self._file_service is None:
+            from ..services.file_service import FileServiceImpl
+            self._file_service = FileServiceImpl(
+                file_repository=self.file_repository,
+                output_base_dir=Path(self.settings.output_base_dir)
+            )
+        return self._file_service
+
+    @property
+    def translation_service(self) -> TranslationService:
+        if self._translation_service is None:
+            if not self.settings.openai_api_key:
+                raise ValueError("OpenAI API key is required for translation service. Set OPENAI_API_KEY environment variable.")
+            from ..services.translation_service import TranslationServiceImpl
+            self._translation_service = TranslationServiceImpl(
+                api_key=self.settings.openai_api_key,
+                base_url=self.settings.openai_base_url,
+                model=self.settings.openai_model,
+                temperature=self.settings.openai_temperature,
+                max_concurrent_requests=self.settings.openai_max_concurrent_requests
+            )
+        return self._translation_service
+
+    @property
+    def workflow_service(self) -> WorkflowService:
+        if self._workflow_service is None:
+            self._workflow_service = WorkflowServiceImpl(
+                audio_service=self.audio_service,
+                transcription_service=self.transcription_service,
+                correction_service=self.correction_service,
+                youtube_service=self.youtube_service,
+                file_service=self.file_service,
+                translation_service=self.translation_service
+            )
+        return self._workflow_service
+
+
+# Service container for dependency injection
+services = APIServiceContainer()
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -111,7 +229,19 @@ def update_job_safely(job_id: str, updates: dict) -> bool:
         return False
 
 
-async def process_transcription_task(job_id: str, input_path: str, enable_correction: bool, use_ai_correction: bool, subtitle_format: str, keep_audio: bool = False):
+async def process_transcription_task(
+    job_id: str,
+    input_path: str,
+    enable_correction: bool,
+    use_ai_correction: bool,
+    subtitle_format: str,
+    keep_audio: bool = False,
+    enable_translation: bool = False,
+    translation_target_language: Optional[str] = None,
+    whisper_source_language: Optional[str] = None,
+    whisper_model: Optional[str] = None,
+    whisper_base_url: Optional[str] = None
+):
     """Background task for processing transcription"""
     try:
         logger.info(f"Starting transcription job {job_id}")
@@ -121,19 +251,88 @@ async def process_transcription_task(job_id: str, input_path: str, enable_correc
             logger.info(f"Job {job_id} was cancelled before processing started")
             return
         
-        # Process the transcription
-        original_files, corrected_files, actual_output_dir = process_input_to_subtitle(
-            input_path, config.base_output_dir, subtitle_format, enable_correction, use_ai_correction, keep_audio
-        )
+        # Process the transcription using workflow service directly
+        base_output_dir = Path(config.base_output_dir)
+
+        # Parse translation target language
+        target_lang = None
+        if enable_translation and translation_target_language:
+            try:
+                target_lang = SupportedLanguage(translation_target_language)
+            except ValueError:
+                raise Exception(f"Unsupported translation language: {translation_target_language}")
+
+        # Check if input is URL or local file
+        if services.youtube_service.is_valid_url(input_path):
+            job = await services.workflow_service.process_youtube_url(
+                url=input_path,
+                output_dir=base_output_dir,
+                format=subtitle_format,
+                enable_correction=enable_correction,
+                use_ai_correction=use_ai_correction,
+                keep_audio=keep_audio,
+                enable_translation=enable_translation,
+                translation_target_language=target_lang,
+                whisper_source_language=whisper_source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url
+            )
+        else:
+            # Local file processing
+            file_path = Path(input_path)
+            if not file_path.exists():
+                raise Exception(f"File not found: {file_path}")
+
+            job = await services.workflow_service.process_local_file(
+                file_path=file_path,
+                output_dir=base_output_dir,
+                format=subtitle_format,
+                enable_correction=enable_correction,
+                use_ai_correction=use_ai_correction,
+                keep_audio=keep_audio,
+                enable_translation=enable_translation,
+                translation_target_language=target_lang,
+                whisper_source_language=whisper_source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url
+            )
+
+        # Wait for job completion (with timeout)
+        max_wait_seconds = services.settings.max_processing_timeout_seconds
+        wait_seconds = 0
+
+        while wait_seconds < max_wait_seconds:
+            status = await services.workflow_service.get_job_status(job.id)
+
+            if status == JobStatus.COMPLETED:
+                break
+            elif status == JobStatus.FAILED:
+                raise Exception(f"Processing failed: {job.error_message}")
+            elif status == JobStatus.NOT_FOUND:
+                raise Exception("Job not found")
+
+            # Wait and check again
+            await asyncio.sleep(2)
+            wait_seconds += 2
+
+        if wait_seconds >= max_wait_seconds:
+            raise Exception("Processing timed out")
         
         # Safely update job completion status
         if not update_job_safely(job_id, {
             "progress": 100,
             "status": "completed",
             "result": {
-                "original_files": original_files,
-                "corrected_files": corrected_files,
-                "output_directory": actual_output_dir
+                "message": "Transcription completed successfully",
+                "output_directory": str(job.actual_output_dir) if job.actual_output_dir else str(base_output_dir),
+                "job_details": {
+                    "format": subtitle_format,
+                    "correction_enabled": enable_correction,
+                    "ai_correction_enabled": use_ai_correction,
+                    "translation_enabled": enable_translation,
+                    "whisper_model": whisper_model,
+                    "whisper_base_url": whisper_base_url
+                }
             }
         }):
             logger.info(f"Job {job_id} was cancelled during processing")
@@ -151,7 +350,14 @@ async def process_transcription_task(job_id: str, input_path: str, enable_correc
 async def transcribe_url(request: TranscribeRequest, background_tasks: BackgroundTasks):
     """Submit URL for transcription"""
     job_id = str(uuid.uuid4())
-    
+
+    # Get settings for default values
+    settings = get_settings()
+
+    # Apply default correction settings if not explicitly set
+    effective_correction = request.enable_correction or settings.enable_correction_by_default
+    effective_ai_correction = request.use_ai_correction or (effective_correction and settings.enable_correction_by_default)
+
     # Initialize job
     jobs[job_id] = {
         "status": "pending",
@@ -160,16 +366,21 @@ async def transcribe_url(request: TranscribeRequest, background_tasks: Backgroun
         "input_type": "url",
         "input_value": str(request.url)
     }
-    
+
     # Add background task
     background_tasks.add_task(
         process_transcription_task,
         job_id,
         str(request.url),
-        request.enable_correction,
-        request.use_ai_correction,
+        effective_correction,
+        effective_ai_correction,
         request.subtitle_format,
-        request.keep_audio
+        request.keep_audio,
+        request.enable_translation,
+        request.translation_target_language,
+        request.whisper_source_language,
+        request.whisper_model,
+        request.whisper_base_url
     )
     
     logger.info(f"Created transcription job {job_id} for URL: {request.url}")
@@ -185,17 +396,26 @@ async def transcribe_url(request: TranscribeRequest, background_tasks: Backgroun
 async def transcribe_upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    enable_correction: bool = Form(True),
-    use_ai_correction: bool = Form(True),
+    enable_correction: bool = Form(False),
+    use_ai_correction: bool = Form(False),
     subtitle_format: str = Form("txt"),
     keep_audio: bool = Form(False),
     enable_translation: bool = Form(False),
     translation_target_language: Optional[str] = Form(None),
-    whisper_source_language: Optional[str] = Form(None)
+    whisper_source_language: Optional[str] = Form(None),
+    whisper_model: Optional[str] = Form(None),
+    whisper_base_url: Optional[str] = Form(None)
 ):
     """Upload file for transcription"""
     job_id = str(uuid.uuid4())
-    
+
+    # Get settings for default values
+    settings = get_settings()
+
+    # Apply default correction settings if not explicitly set
+    effective_correction = enable_correction or settings.enable_correction_by_default
+    effective_ai_correction = use_ai_correction or (effective_correction and settings.enable_correction_by_default)
+
     # Save uploaded file
     upload_dir = Path(config.base_output_dir) / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -222,10 +442,15 @@ async def transcribe_upload(
             process_transcription_task,
             job_id,
             str(file_path),
-            enable_correction,
-            use_ai_correction,
+            effective_correction,
+            effective_ai_correction,
             subtitle_format,
-            keep_audio
+            keep_audio,
+            enable_translation,
+            translation_target_language,
+            whisper_source_language,
+            whisper_model,
+            whisper_base_url
         )
         
         logger.info(f"Created transcription job {job_id} for uploaded file: {file.filename}")

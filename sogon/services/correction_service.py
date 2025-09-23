@@ -13,10 +13,17 @@ logger = logging.getLogger(__name__)
 class CorrectionServiceImpl(CorrectionService):
     """Implementation of CorrectionService interface using OpenAI SDK"""
     
-    def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1", model: str = "gpt-4o-mini", temperature: float = 0.1):
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.model = model
-        self.temperature = temperature
+    def __init__(self, api_key: str = None, base_url: str = None, model: str = None, temperature: float = None):
+        from ..config import get_settings
+        settings = get_settings()
+
+        # Use provided values or fall back to correction-specific settings
+        self.api_key = api_key or settings.effective_correction_api_key
+        self.base_url = base_url or settings.correction_base_url
+        self.model = model or settings.correction_model
+        self.temperature = temperature if temperature is not None else settings.correction_temperature
+
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=1200.0)
     
     async def correct_text(self, text: str, use_ai: bool = True) -> CorrectionResult:
         """Correct transcribed text using OpenAI"""

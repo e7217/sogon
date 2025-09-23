@@ -103,6 +103,8 @@ class ProcessingJob:
     enable_translation: bool = False
     translation_target_language: Optional[str] = None
     whisper_source_language: Optional[str] = None  # None means auto-detect
+    whisper_model: Optional[str] = None  # None means use default
+    whisper_base_url: Optional[str] = None  # None means use default Groq API
     
     # Results
     original_files: Optional[Dict[str, str]] = None  # {type: path}
@@ -217,6 +219,8 @@ class ProcessingJob:
             "enable_translation": self.enable_translation,
             "translation_target_language": self.translation_target_language,
             "whisper_source_language": self.whisper_source_language,
+            "whisper_model": self.whisper_model,
+            "whisper_base_url": self.whisper_base_url,
             "original_files": self.original_files,
             "corrected_files": self.corrected_files,
             "translated_files": self.translated_files,
@@ -239,6 +243,8 @@ class ProcessingJob:
             enable_translation=data.get("enable_translation", False),
             translation_target_language=data.get("translation_target_language"),
             whisper_source_language=data.get("whisper_source_language"),
+            whisper_model=data.get("whisper_model"),
+            whisper_base_url=data.get("whisper_base_url"),
             original_files=data.get("original_files"),
             corrected_files=data.get("corrected_files"),
             translated_files=data.get("translated_files"),

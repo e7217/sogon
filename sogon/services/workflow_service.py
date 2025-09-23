@@ -48,15 +48,25 @@ class WorkflowServiceImpl(WorkflowService):
         url: str,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = True,
-        use_ai_correction: bool = True,
+        enable_correction: bool = False,
+        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
-        whisper_source_language: Optional[str] = None
+        whisper_source_language: Optional[str] = None,
+        whisper_model: Optional[str] = None,
+        whisper_base_url: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
-        
+
+        # Import here to avoid circular imports
+        from ..config import get_settings
+        settings = get_settings()
+
+        # Apply default correction settings if not explicitly set
+        effective_correction = enable_correction or settings.enable_correction_by_default
+        effective_ai_correction = use_ai_correction or (effective_correction and settings.enable_correction_by_default)
+
         job_id = str(uuid.uuid4())
         job = ProcessingJob(
             id=job_id,
@@ -64,12 +74,14 @@ class WorkflowServiceImpl(WorkflowService):
             input_path=url,
             output_directory=str(output_dir),
             subtitle_format=format,
-            enable_correction=enable_correction,
-            use_ai_correction=use_ai_correction,
+            enable_correction=effective_correction,
+            use_ai_correction=effective_ai_correction,
             keep_audio=keep_audio,
             enable_translation=enable_translation,
             translation_target_language=translation_target_language.value if translation_target_language else None,
             whisper_source_language=whisper_source_language,
+            whisper_model=whisper_model,
+            whisper_base_url=whisper_base_url,
             status=JobStatus.PENDING,
             created_at=datetime.now()
         )
@@ -86,15 +98,25 @@ class WorkflowServiceImpl(WorkflowService):
         file_path: Path,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = True,
-        use_ai_correction: bool = True,
+        enable_correction: bool = False,
+        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
-        whisper_source_language: Optional[str] = None
+        whisper_source_language: Optional[str] = None,
+        whisper_model: Optional[str] = None,
+        whisper_base_url: Optional[str] = None
     ) -> ProcessingJob:
         """Complete workflow for local file processing"""
-        
+
+        # Import here to avoid circular imports
+        from ..config import get_settings
+        settings = get_settings()
+
+        # Apply default correction settings if not explicitly set
+        effective_correction = enable_correction or settings.enable_correction_by_default
+        effective_ai_correction = use_ai_correction or (effective_correction and settings.enable_correction_by_default)
+
         job_id = str(uuid.uuid4())
         job = ProcessingJob(
             id=job_id,
@@ -102,12 +124,14 @@ class WorkflowServiceImpl(WorkflowService):
             input_path=str(file_path),
             output_directory=str(output_dir),
             subtitle_format=format,
-            enable_correction=enable_correction,
-            use_ai_correction=use_ai_correction,
+            enable_correction=effective_correction,
+            use_ai_correction=effective_ai_correction,
             keep_audio=keep_audio,
             enable_translation=enable_translation,
             translation_target_language=translation_target_language.value if translation_target_language else None,
             whisper_source_language=whisper_source_language,
+            whisper_model=whisper_model,
+            whisper_base_url=whisper_base_url,
             status=JobStatus.PENDING,
             created_at=datetime.now()
         )
@@ -266,10 +290,10 @@ class WorkflowServiceImpl(WorkflowService):
             logger.info(f"Transcribing {len(chunks)} audio chunks")
             if len(chunks) == 1:
                 # Single file transcription
-                transcription = await self.transcription_service.transcribe_audio(audio_file, job.whisper_source_language)
+                transcription = await self.transcription_service.transcribe_audio(audio_file, job.whisper_source_language, job.whisper_model, job.whisper_base_url)
             else:
                 # Multiple chunks transcription
-                chunk_results = await self.transcription_service.transcribe_chunks(chunks, job.whisper_source_language)
+                chunk_results = await self.transcription_service.transcribe_chunks(chunks, job.whisper_source_language, job.whisper_model, job.whisper_base_url)
                 transcription = await self.transcription_service.combine_transcriptions(chunk_results)
             
             if not transcription.text.strip():
