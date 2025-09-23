@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
     # Legacy API Configuration (for backward compatibility)
-    groq_api_key: str = Field(..., env="GROQ_API_KEY")
+    groq_api_key: str = Field(None, env="GROQ_API_KEY")
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL")
     openai_model: str = Field("gpt-4o-mini", env="OPENAI_MODEL")
