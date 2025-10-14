@@ -38,6 +38,14 @@ class TranslationServiceImpl(TranslationService):
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=1200.0)
         self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
         self.supported_languages = list(SupportedLanguage)
+
+    def _get_max_tokens_param(self, max_tokens_value: int) -> dict:
+        """Get the appropriate max tokens parameter based on model version"""
+        # GPT-5 and newer models use max_completion_tokens
+        # GPT-4 and older models use max_tokens
+        if "gpt-5" in self.model.lower() or "o1" in self.model.lower():
+            return {"max_completion_tokens": max_tokens_value}
+        return {"max_tokens": max_tokens_value}
     
     async def translate_text(
         self, 
@@ -63,7 +71,7 @@ class TranslationServiceImpl(TranslationService):
                         {"role": "user", "content": prompt}
                     ],
                     temperature=self.temperature,
-                    max_tokens=4000
+                    **self._get_max_tokens_param(4000)
                 )
             
             translated_text = response.choices[0].message.content.strip()
@@ -211,7 +219,7 @@ class TranslationServiceImpl(TranslationService):
                             {"role": "user", "content": prompt}
                         ],
                         temperature=self.temperature,
-                        max_tokens=4000
+                        **self._get_max_tokens_param(4000)
                     )
                 
                 translated_text = response.choices[0].message.content.strip()
@@ -352,7 +360,7 @@ class TranslationServiceImpl(TranslationService):
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1,
-                    max_tokens=10
+                    **self._get_max_tokens_param(10)
                 )
             
             detected_language = response.choices[0].message.content.strip().lower()

@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
     # Legacy API Configuration (for backward compatibility)
-    groq_api_key: str = Field(None, env="GROQ_API_KEY")
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
+    groq_api_key: str | None = Field(None, env="GROQ_API_KEY")
+    openai_api_key: str | None = Field(None, env="OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL")
     openai_model: str = Field("gpt-4o-mini", env="OPENAI_MODEL")
     openai_temperature: float = Field(0.3, env="OPENAI_TEMPERATURE")
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     chunk_timeout_seconds: int = Field(120, env="CHUNK_TIMEOUT_SECONDS")
     audio_formats: List[str] = Field(["mp3", "m4a", "wav"], env="AUDIO_FORMATS")
     video_formats: List[str] = Field(["mp4", "avi", "mov", "wmv", "flv", "mkv", "webm"], env="VIDEO_FORMATS")
-    audio_quality: str = Field("128k", env="AUDIO_QUALITY")
+    audio_quality: str = Field("64k", env="AUDIO_QUALITY")
     audio_sample_rate: int = Field(16000, env="AUDIO_SAMPLE_RATE")
     audio_channels: int = Field(1, env="AUDIO_CHANNELS")  # 1=mono, 2=stereo
     
@@ -88,8 +88,10 @@ class Settings(BaseSettings):
     @field_validator("openai_api_key")
     @classmethod
     def validate_openai_api_key(cls, v):
-        if not v or v.strip() == "":
-            raise ValueError("OPENAI_API_KEY is required")
+        if v is None:
+            return None
+        if v.strip() == "":
+            raise ValueError("OPENAI_API_KEY cannot be empty string")
         return v.strip()
     
     @field_validator("max_chunk_size_mb")
@@ -152,6 +154,14 @@ class Settings(BaseSettings):
     def validate_audio_channels(cls, v):
         if v not in [1, 2]:
             raise ValueError("audio_channels must be 1 (mono) or 2 (stereo)")
+        return v
+
+    @field_validator("audio_quality")
+    @classmethod
+    def validate_audio_quality(cls, v):
+        valid_qualities = ["16k", "32k", "64k", "96k", "128k", "192k", "256k", "320k"]
+        if v not in valid_qualities:
+            raise ValueError(f"audio_quality must be one of: {valid_qualities}")
         return v
 
     @field_validator("transcription_provider")

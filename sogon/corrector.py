@@ -10,6 +10,15 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 
+def _get_max_tokens_param(model: str, max_tokens_value: int) -> dict:
+    """Get the appropriate max tokens parameter based on model version"""
+    # GPT-5 and newer models use max_completion_tokens
+    # GPT-4 and older models use max_tokens
+    if "gpt-5" in model.lower() or "o1" in model.lower():
+        return {"max_completion_tokens": max_tokens_value}
+    return {"max_tokens": max_tokens_value}
+
+
 def fix_ai_based_corrections(text, api_key=None, base_url="https://api.openai.com/v1", model="gpt-4o-mini", temperature=0.1):
     """
     AI-based text post-processing and correction
@@ -25,7 +34,7 @@ def fix_ai_based_corrections(text, api_key=None, base_url="https://api.openai.co
         str: Corrected text
     """
     logger.debug(f"AI correction started: text length={len(text)}, api_key provided={api_key is not None}")
-    
+
     if not api_key:
         api_key = os.getenv("OPENAI_API_KEY")
         logger.debug("API key retrieved from environment variable")
@@ -83,7 +92,7 @@ Please output only the corrected text (without explanations or additional descri
                         {"role": "user", "content": prompt},
                     ],
                     temperature=temperature,
-                    max_tokens=3000,
+                    **_get_max_tokens_param(model, 3000)
                 )
                 logger.debug(f"Chunk {i+1} API call successful")
             except Exception as api_error:

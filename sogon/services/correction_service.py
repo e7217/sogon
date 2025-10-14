@@ -24,6 +24,14 @@ class CorrectionServiceImpl(CorrectionService):
         self.temperature = temperature if temperature is not None else settings.correction_temperature
 
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=1200.0)
+
+    def _get_max_tokens_param(self, max_tokens_value: int) -> dict:
+        """Get the appropriate max tokens parameter based on model version"""
+        # GPT-5 and newer models use max_completion_tokens
+        # GPT-4 and older models use max_tokens
+        if "gpt-5" in self.model.lower() or "o1" in self.model.lower():
+            return {"max_completion_tokens": max_tokens_value}
+        return {"max_tokens": max_tokens_value}
     
     async def correct_text(self, text: str, use_ai: bool = True) -> CorrectionResult:
         """Correct transcribed text using OpenAI"""
@@ -52,7 +60,7 @@ class CorrectionServiceImpl(CorrectionService):
                     {"role": "user", "content": prompt}
                 ],
                 temperature=self.temperature,
-                max_tokens=3000
+                **self._get_max_tokens_param(3000)
             )
             
             corrected_text = response.choices[0].message.content.strip()
