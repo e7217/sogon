@@ -31,6 +31,15 @@ from .job import (
     JobTimeoutError,
     JobValidationError
 )
+from .local_model import (
+    ProviderNotAvailableError,
+    DeviceNotAvailableError,
+    InsufficientDiskSpaceError,
+    ResourceExhaustedError,
+    ModelDownloadError,
+    ModelCorruptionError,
+    ConfigurationError
+)
 
 __all__ = [
     # Base exceptions
@@ -64,5 +73,14 @@ __all__ = [
     "JobNotFoundError",
     "JobCancelledError",
     "JobTimeoutError",
-    "JobValidationError"
+    "JobValidationError",
+
+    # Local model exceptions
+    "ProviderNotAvailableError",
+    "DeviceNotAvailableError",
+    "InsufficientDiskSpaceError",
+    "ResourceExhaustedError",
+    "ModelDownloadError",
+    "ModelCorruptionError",
+    "ConfigurationError"
 ]

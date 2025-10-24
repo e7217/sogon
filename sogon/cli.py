@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 
 class ServiceContainer:
     """Dependency injection container for services"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self._file_repository: Optional[FileRepository] = None
@@ -42,6 +42,7 @@ class ServiceContainer:
         self._file_service: Optional[FileService] = None
         self._translation_service: Optional[TranslationService] = None
         self._workflow_service: Optional[WorkflowService] = None
+        self._transcription_provider = None
     
     @property
     def file_repository(self) -> FileRepository:
@@ -60,8 +61,11 @@ class ServiceContainer:
     @property
     def transcription_service(self) -> TranscriptionService:
         if self._transcription_service is None:
+            # Task 25: Pass provider to transcription service
+            provider = self.get_transcription_provider()
             self._transcription_service = TranscriptionServiceImpl(
-                max_workers=self.settings.max_workers
+                max_workers=self.settings.max_workers,
+                provider=provider
             )
         return self._transcription_service
     
@@ -116,6 +120,48 @@ class ServiceContainer:
                 translation_service=self.translation_service
             )
         return self._workflow_service
+
+    def get_transcription_provider(self):
+        """
+        Get transcription provider based on settings.
+
+        Returns:
+            TranscriptionProvider instance or None for legacy API-based providers
+
+        Raises:
+            ProviderNotAvailableError: When provider dependencies missing
+        """
+        provider_name = self.settings.transcription_provider
+
+        # Legacy API-based providers (OpenAI, Groq) - return None to use existing flow
+        if provider_name in ["openai", "groq"]:
+            return None
+
+        # Local model provider (FR-001: stable-whisper for improved subtitle accuracy)
+        if provider_name == "stable-whisper":
+            if self._transcription_provider is None:
+                # Lazy import to avoid circular dependency
+                from sogon.providers.local.stable_whisper_provider import StableWhisperProvider
+                from sogon.exceptions import ProviderNotAvailableError
+
+                # Create provider instance
+                local_config = self.settings.get_local_model_config()
+                provider = StableWhisperProvider(local_config)
+
+                # Check availability (FR-025, FR-026)
+                if not provider.is_available:
+                    deps = provider.get_required_dependencies()
+                    raise ProviderNotAvailableError(
+                        provider=provider_name,
+                        missing_dependencies=deps
+                    )
+
+                self._transcription_provider = provider
+
+            return self._transcription_provider
+
+        # Unknown provider
+        raise ValueError(f"Unknown transcription provider: {provider_name}")
 
 
 async def process_input(
@@ -242,12 +288,22 @@ app = typer.Typer(
     rich_markup_mode="rich",
     add_completion=False,
     epilog="""Examples:
+  # API-based transcription
   sogon run "https://youtube.com/watch?v=..."
   sogon run "audio.mp3" --format srt
   sogon run "video.mp4" --correction --output-dir ./results
+
+  # Translation
   sogon run "video.mp4" --translate --target-language ko
   sogon run "video.mp4" --correction --ai-correction --translate --target-language ko
+
+  # Custom API provider
   sogon run "video.mp4" --whisper-model whisper-1 --whisper-base-url https://api.openai.com/v1
+
+  # Local model transcription (requires sogon[local] installation)
+  sogon run "audio.mp3" --local-model base --local-device cpu
+  sogon run "audio.mp3" --local-model large-v3 --local-device cuda --local-compute-type float16
+  sogon run "audio.mp3" --local-model small --local-device mps --local-beam-size 5
 """
 )
 
@@ -267,6 +323,14 @@ def process(
     whisper_base_url: Annotated[Optional[str], typer.Option("--whisper-base-url", help="Whisper API base URL (default: OpenAI API)")] = None,
     openai_model: Annotated[Optional[str], typer.Option("--openai-model", help="OpenAI model for correction/translation (default: gpt-4o-mini)")] = None,
     openai_base_url: Annotated[Optional[str], typer.Option("--openai-base-url", help="OpenAI API base URL (default: https://api.openai.com/v1)")] = None,
+    # Local model configuration flags (FR-019)
+    local_model: Annotated[Optional[str], typer.Option("--local-model", help="Local Whisper model name (tiny, base, small, medium, large, large-v2, large-v3)")] = None,
+    local_device: Annotated[Optional[str], typer.Option("--local-device", help="Compute device for local model (cpu, cuda, mps)")] = None,
+    local_compute_type: Annotated[Optional[str], typer.Option("--local-compute-type", help="Compute type for local model (int8, int16, float16, float32)")] = None,
+    local_beam_size: Annotated[Optional[int], typer.Option("--local-beam-size", help="Beam size for local model inference (1-10)")] = None,
+    local_temperature: Annotated[Optional[float], typer.Option("--local-temperature", help="Temperature for local model inference (0.0-1.0)")] = None,
+    local_vad_filter: Annotated[bool, typer.Option("--local-vad-filter", help="Enable VAD filter for local model")] = False,
+    local_max_workers: Annotated[Optional[int], typer.Option("--local-max-workers", help="Max concurrent workers for local model (1-10)")] = None,
     log_level: Annotated[str, typer.Option("--log-level", help="Logging level")] = "INFO"
 ):
     """Process video/audio file for subtitle generation"""
@@ -304,6 +368,39 @@ def process(
     
     # Initialize service container
     services = ServiceContainer()
+
+    # Override local model settings if CLI flags provided (FR-019)
+    # Must happen BEFORE provider check
+    if local_model:
+        services.settings.local_model_name = local_model
+        # Auto-switch to local provider when --local-model is used (FR-016)
+        services.settings.transcription_provider = "stable-whisper"
+    if local_device:
+        services.settings.local_device = local_device
+    if local_compute_type:
+        services.settings.local_compute_type = local_compute_type
+    if local_beam_size:
+        services.settings.local_beam_size = local_beam_size
+    if local_temperature is not None:
+        services.settings.local_temperature = local_temperature
+    if local_vad_filter:
+        services.settings.local_vad_filter = local_vad_filter
+    if local_max_workers:
+        services.settings.local_max_workers = local_max_workers
+
+    # Task 26: Provider availability check (FR-025, FR-026)
+    try:
+        provider = services.get_transcription_provider()
+        if provider:
+            logger.info(f"Using transcription provider: {provider.provider_name}")
+        else:
+            logger.info(f"Using transcription provider: {services.settings.transcription_provider}")
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True, color=typer.colors.RED)
+        if "stable-whisper" in str(e) or "stable-ts" in str(e):
+            typer.echo("\nTo enable local model support, install with:", err=True)
+            typer.echo("  pip install sogon[local]", err=True)
+        raise typer.Exit(1)
     
     # Determine effective correction settings
     effective_correction = correction or services.settings.enable_correction_by_default
