@@ -19,18 +19,36 @@ logger = logging.getLogger(__name__)
 
 class TranscriptionServiceImpl(TranscriptionService):
     """Implementation of TranscriptionService interface"""
-    
-    def __init__(self, api_key: str = None, max_workers: int = 4):
+
+    def __init__(self, api_key: str = None, max_workers: int = 4, provider=None):
         self.settings = get_settings()
         self.api_key = api_key or self.settings.effective_transcription_api_key
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.provider = provider  # Task 25: Provider pattern integration
     
     async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None, model: str = None, base_url: str = None) -> TranscriptionResult:
         """Transcribe single audio file"""
         try:
             logger.info(f"Starting transcription for {audio_file.name}")
-            
+
+            # Task 25: Use provider pattern if available (FR-001, FR-011)
+            if self.provider:
+                logger.info(f"Using provider: {self.provider.provider_name}")
+
+                # Call provider.transcribe() with audio_file
+                # Note: config parameter not used yet (will be added in future task)
+                provider_result = await self.provider.transcribe(audio_file, config=None)
+
+                # Convert provider result to TranscriptionResult
+                # Provider returns mock object with: text, segments, language, duration
+                result = self._convert_provider_result_to_transcription_result(
+                    provider_result, audio_file
+                )
+                logger.info(f"Provider transcription completed: {len(result.text)} characters")
+                return result
+
+            # Legacy API-based flow (openai, groq)
             # Run transcription in thread executor
             loop = asyncio.get_event_loop()
             text, metadata = await loop.run_in_executor(
@@ -41,16 +59,16 @@ class TranscriptionServiceImpl(TranscriptionService):
                 model,
                 base_url
             )
-            
+
             if not text:
                 raise TranscriptionError("Transcription returned empty result")
-            
+
             # Convert to domain model
             result = self._convert_to_transcription_result(text, metadata, audio_file)
             logger.info(f"Transcription completed: {len(text)} characters")
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to transcribe {audio_file.path}: {e}")
             raise TranscriptionError(f"Transcription failed: {e}")
@@ -253,7 +271,7 @@ class TranscriptionServiceImpl(TranscriptionService):
     def _create_segments_from_chunk(self, chunk_segments: list, start_id: int) -> List[TranscriptionSegment]:
         """Create TranscriptionSegment objects from chunk data"""
         segments = []
-        
+
         for i, seg in enumerate(chunk_segments):
             if isinstance(seg, dict):
                 segment = TranscriptionSegment(
@@ -264,9 +282,53 @@ class TranscriptionServiceImpl(TranscriptionService):
                     confidence=seg.get("confidence", 0.0)
                 )
                 segments.append(segment)
-        
+
         return segments
-    
+
+    def _convert_provider_result_to_transcription_result(self, provider_result, audio_file: AudioFile) -> TranscriptionResult:
+        """Convert provider result to TranscriptionResult domain model (Task 25)"""
+        try:
+            # Provider returns object with: text, segments (list of dicts), language, duration
+            segments = []
+
+            # Convert dict segments to TranscriptionSegment objects
+            if hasattr(provider_result, 'segments'):
+                for i, seg_dict in enumerate(provider_result.segments):
+                    segment = TranscriptionSegment(
+                        id=i + 1,
+                        start=seg_dict.get("start", 0.0),
+                        end=seg_dict.get("end", 0.0),
+                        text=seg_dict.get("text", "").strip(),
+                        confidence=seg_dict.get("confidence", 0.0)
+                    )
+                    segments.append(segment)
+
+            # Extract duration from provider result or use audio file duration
+            duration = getattr(provider_result, 'duration', None) or audio_file.duration_seconds
+
+            return TranscriptionResult(
+                text=getattr(provider_result, 'text', '').strip(),
+                segments=segments,
+                language=getattr(provider_result, 'language', 'unknown'),
+                duration=duration,
+                chunk_number=None,
+                total_chunks=1,
+                chunk_start_time=0.0
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to convert provider result: {e}")
+            # Return basic result with text only
+            return TranscriptionResult(
+                text=getattr(provider_result, 'text', '').strip(),
+                segments=[],
+                language=getattr(provider_result, 'language', 'unknown'),
+                duration=audio_file.duration_seconds,
+                chunk_number=None,
+                total_chunks=1,
+                chunk_start_time=0.0
+            )
+
     def __del__(self):
         """Cleanup executor on deletion"""
         if hasattr(self, 'executor'):

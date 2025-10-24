@@ -164,10 +164,22 @@ class Settings(BaseSettings):
             raise ValueError(f"audio_quality must be one of: {valid_qualities}")
         return v
 
+    # Local Model Configuration (FR-018: environment variable support)
+    local_model_name: str = Field("base", env="SOGON_LOCAL_MODEL_NAME")
+    local_device: str = Field("cpu", env="SOGON_LOCAL_DEVICE")
+    local_compute_type: str = Field("int8", env="SOGON_LOCAL_COMPUTE_TYPE")
+    local_beam_size: int = Field(5, env="SOGON_LOCAL_BEAM_SIZE")
+    local_language: str | None = Field(None, env="SOGON_LOCAL_LANGUAGE")
+    local_temperature: float = Field(0.0, env="SOGON_LOCAL_TEMPERATURE")
+    local_vad_filter: bool = Field(False, env="SOGON_LOCAL_VAD_FILTER")
+    local_max_workers: int = Field(2, env="SOGON_LOCAL_MAX_WORKERS")
+    local_cache_max_size_gb: float = Field(8.0, env="SOGON_LOCAL_CACHE_MAX_SIZE_GB")
+    local_download_root: str = Field("~/.cache/sogon/models", env="SOGON_LOCAL_DOWNLOAD_ROOT")
+
     @field_validator("transcription_provider")
     @classmethod
     def validate_transcription_provider(cls, v):
-        valid_providers = ["groq", "openai"]
+        valid_providers = ["groq", "openai", "stable-whisper"]
         if v not in valid_providers:
             raise ValueError(f"transcription_provider must be one of: {valid_providers}")
         return v
@@ -186,6 +198,58 @@ class Settings(BaseSettings):
         valid_providers = ["openai", "azure", "anthropic"]
         if v not in valid_providers:
             raise ValueError(f"correction_provider must be one of: {valid_providers}")
+        return v
+
+    @field_validator("local_model_name")
+    @classmethod
+    def validate_local_model_name(cls, v):
+        valid_models = {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}
+        if v not in valid_models:
+            raise ValueError(f"local_model_name must be one of: {sorted(valid_models)}")
+        return v
+
+    @field_validator("local_device")
+    @classmethod
+    def validate_local_device(cls, v):
+        valid_devices = {"cpu", "cuda", "mps"}
+        if v not in valid_devices:
+            raise ValueError(f"local_device must be one of: {sorted(valid_devices)}")
+        return v
+
+    @field_validator("local_compute_type")
+    @classmethod
+    def validate_local_compute_type(cls, v):
+        valid_types = {"int8", "int16", "float16", "float32"}
+        if v not in valid_types:
+            raise ValueError(f"local_compute_type must be one of: {sorted(valid_types)}")
+        return v
+
+    @field_validator("local_beam_size")
+    @classmethod
+    def validate_local_beam_size(cls, v):
+        if not 1 <= v <= 10:
+            raise ValueError("local_beam_size must be between 1 and 10")
+        return v
+
+    @field_validator("local_temperature")
+    @classmethod
+    def validate_local_temperature(cls, v):
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("local_temperature must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("local_max_workers")
+    @classmethod
+    def validate_local_max_workers(cls, v):
+        if not 1 <= v <= 10:
+            raise ValueError("local_max_workers must be between 1 and 10")
+        return v
+
+    @field_validator("local_cache_max_size_gb")
+    @classmethod
+    def validate_local_cache_max_size_gb(cls, v):
+        if v <= 0:
+            raise ValueError("local_cache_max_size_gb must be greater than 0")
         return v
 
     # Compatibility properties for backward compatibility
@@ -208,6 +272,32 @@ class Settings(BaseSettings):
     def effective_correction_api_key(self) -> str:
         """Get effective correction API key with fallback"""
         return self.correction_api_key or self.openai_api_key
+
+    def get_local_model_config(self):
+        """
+        Create LocalModelConfiguration from settings.
+
+        Returns:
+            LocalModelConfiguration: Configuration object for local models
+
+        Note:
+            Import is done locally to avoid circular dependencies
+        """
+        from pathlib import Path
+        from sogon.models.local_config import LocalModelConfiguration
+
+        return LocalModelConfiguration(
+            model_name=self.local_model_name,
+            device=self.local_device,
+            compute_type=self.local_compute_type,
+            beam_size=self.local_beam_size,
+            language=self.local_language,
+            temperature=self.local_temperature,
+            vad_filter=self.local_vad_filter,
+            max_workers=self.local_max_workers,
+            cache_max_size_gb=self.local_cache_max_size_gb,
+            download_root=Path(self.local_download_root).expanduser(),
+        )
 
 
 @lru_cache()
