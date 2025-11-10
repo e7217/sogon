@@ -1,7 +1,7 @@
 """
 Local Whisper model-specific exceptions.
 
-Error hierarchy for faster-whisper provider failures.
+Error hierarchy for local Whisper model provider failures.
 Each error includes actionable resolution steps (FR-025, FR-009).
 """
 
@@ -14,7 +14,7 @@ class ProviderNotAvailableError(SogonError):
     Error when local model provider dependencies are not met.
 
     Raised when:
-    - faster-whisper not installed
+    - stable-ts not installed
     - torch not installed
     - Other required dependencies missing
 

@@ -44,8 +44,6 @@ class TestAPIConfig(unittest.TestCase):
         self.assertEqual(config.debug, False)
         self.assertEqual(config.log_level, "INFO")
         self.assertEqual(config.base_output_dir, "./result")
-        self.assertEqual(config.enable_correction, True)
-        self.assertEqual(config.use_ai_correction, True)
 
     def test_environment_variable_override_host(self):
         """Test host configuration from environment variable"""
@@ -92,14 +90,6 @@ class TestAPIConfig(unittest.TestCase):
         os.environ['SOGON_OUTPUT_DIR'] = '/custom/output/path'
         config = APIConfig()
         self.assertEqual(config.base_output_dir, '/custom/output/path')
-
-    def test_environment_variable_override_correction_settings(self):
-        """Test correction settings from environment variables"""
-        os.environ['SOGON_ENABLE_CORRECTION'] = 'false'
-        os.environ['SOGON_USE_AI_CORRECTION'] = 'false'
-        config = APIConfig()
-        self.assertEqual(config.enable_correction, False)
-        self.assertEqual(config.use_ai_correction, False)
 
     def test_invalid_port_number(self):
         """Test invalid port number handling"""

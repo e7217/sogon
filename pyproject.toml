@@ -63,11 +63,22 @@ dev = [
     "ruff>=0.11.13",
     "pytest>=7.0.0",
     "pytest-mock>=3.10.0",
+    "pytest-asyncio>=0.21.0",
     "coverage>=7.9.1",
 ]
 
 [tool.uv]
 package = true
+
+[tool.pytest.ini_options]
+markers = [
+    "asyncio: mark test as async",
+    "integration: mark test as integration test",
+    "slow: mark test as slow",
+    "gpu: mark test requiring GPU (CUDA)",
+    "mps: mark test requiring MPS (Apple Silicon)",
+]
+asyncio_mode = "auto"
 
 [project.urls]
 Repository = "https://github.com/e7217/sogon"

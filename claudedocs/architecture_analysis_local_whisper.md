@@ -596,8 +596,8 @@ class OpenAIProvider(TranscriptionProvider):
 **Local Provider Implementation:**
 
 ```python
-class FasterWhisperProvider(TranscriptionProvider):
-    """Local faster-whisper transcription provider"""
+class StableWhisperProvider(TranscriptionProvider):
+    """Local stable-whisper transcription provider"""
 
     def __init__(self):
         self.model = None
@@ -609,7 +609,7 @@ class FasterWhisperProvider(TranscriptionProvider):
     ) -> tuple[str, list]:
         # Lazy model loading
         if self.model is None:
-            from faster_whisper import WhisperModel
+            from stable_whisper import WhisperModel
             self.model = WhisperModel(
                 config.model_path or config.model,
                 device=config.device,
@@ -617,7 +617,7 @@ class FasterWhisperProvider(TranscriptionProvider):
                 num_workers=config.num_workers
             )
 
-        # Transcribe with faster-whisper
+        # Transcribe with stable-whisper
         segments, info = self.model.transcribe(
             audio_path,
             language=config.source_language,
@@ -635,13 +635,13 @@ class FasterWhisperProvider(TranscriptionProvider):
 
     def is_available(self) -> bool:
         try:
-            import faster_whisper
+            import stable_whisper
             return True
         except ImportError:
             return False
 
     def _convert_segments(self, segments, info):
-        """Convert faster-whisper output to sogon format"""
+        """Convert stable-whisper output to sogon format"""
         all_text = []
         all_metadata = []
 
@@ -682,7 +682,7 @@ class TranscriptionProviderFactory:
     _providers = {
         "openai": OpenAIProvider,
         "groq": OpenAIProvider,  # Groq uses OpenAI-compatible API
-        "faster-whisper": FasterWhisperProvider,
+        "stable-whisper": StableWhisperProvider,
         "transformers": TransformersWhisperProvider  # Future
     }
 
@@ -845,7 +845,7 @@ class Settings(BaseSettings):
     @field_validator("transcription_provider")
     @classmethod
     def validate_transcription_provider(cls, v):
-        valid_providers = ["groq", "openai", "faster-whisper", "transformers"]
+        valid_providers = ["groq", "openai", "stable-whisper", "transformers"]
         if v not in valid_providers:
             raise ValueError(
                 f"transcription_provider must be one of: {valid_providers}"
@@ -876,8 +876,8 @@ class Settings(BaseSettings):
 4. ✅ Test backward compatibility with existing workflows
 
 **Phase 3: Local Provider Implementation** (Week 2-3)
-1. ✅ Create `FasterWhisperProvider` implementation
-2. ✅ Add `faster-whisper` as optional dependency
+1. ✅ Create `StableWhisperProvider` implementation
+2. ✅ Add `stable-whisper` as optional dependency
 3. ✅ Implement segment conversion logic
 4. ✅ Add GPU/device detection and configuration
 5. ✅ Test with various model sizes and devices
@@ -929,13 +929,13 @@ sogon run video.mp4 --whisper-model whisper-1
 
 # Proposed local model usage
 sogon run video.mp4 \
-  --provider faster-whisper \
+  --provider stable-whisper \
   --model base \
   --device cuda \
   --compute-type float16
 
 # Or via environment variables
-export TRANSCRIPTION_PROVIDER=faster-whisper
+export TRANSCRIPTION_PROVIDER=stable-whisper
 export LOCAL_WHISPER_MODEL=large-v3
 export LOCAL_WHISPER_DEVICE=cuda
 sogon run video.mp4
@@ -976,9 +976,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Local inference with faster-whisper (recommended)
+# Local inference with stable-whisper (recommended)
 local-faster = [
-    "faster-whisper>=1.0.0",  # Optimized local inference
+    "stable-whisper>=1.0.0",  # Optimized local inference
     "torch>=2.0.0",           # PyTorch backend
     "torchaudio>=2.0.0",      # Audio processing for torch
 ]
@@ -1000,7 +1000,7 @@ mps = [
     "torch>=2.0.0",           # MPS support in PyTorch 2.0+
 ]
 
-# Complete local setup (faster-whisper + GPU)
+# Complete local setup (stable-whisper + GPU)
 local = [
     "sogon[local-faster,cuda]"
 ]
@@ -1145,7 +1145,7 @@ See Section 4.2 for detailed provider implementations.
 
 ```python
 # .env file
-TRANSCRIPTION_PROVIDER=faster-whisper
+TRANSCRIPTION_PROVIDER=stable-whisper
 LOCAL_WHISPER_MODEL=large-v3
 LOCAL_WHISPER_DEVICE=cuda
 LOCAL_WHISPER_COMPUTE_TYPE=float16
@@ -1212,7 +1212,7 @@ CLI → ServiceContainer → TranscriptionServiceImpl → transcriber.py → Ope
 CLI → ServiceContainer → TranscriptionServiceImpl → Provider Factory
                                                          ├─> OpenAI Provider
                                                          ├─> Groq Provider
-                                                         ├─> FasterWhisper Provider
+                                                         ├─> StableWhisper Provider
                                                          └─> Transformers Provider
 ```
 
