@@ -19,8 +19,6 @@ class APIConfig:
         
         # SOGON specific settings
         self.base_output_dir: str = os.getenv("SOGON_OUTPUT_DIR", "./result")
-        self.enable_correction: bool = os.getenv("SOGON_ENABLE_CORRECTION", "true").lower() == "true"
-        self.use_ai_correction: bool = os.getenv("SOGON_USE_AI_CORRECTION", "true").lower() == "true"
         
     def __repr__(self) -> str:
         return f"APIConfig(host={self.host}, port={self.port}, debug={self.debug})"

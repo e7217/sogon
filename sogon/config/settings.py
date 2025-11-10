@@ -36,15 +36,6 @@ class Settings(BaseSettings):
     translation_temperature: float = Field(0.3, env="TRANSLATION_TEMPERATURE")
     translation_max_tokens: int = Field(4000, env="TRANSLATION_MAX_TOKENS")
 
-    # Correction Service Configuration
-    correction_provider: str = Field("openai", env="CORRECTION_PROVIDER")
-    correction_api_key: str = Field(None, env="CORRECTION_API_KEY")
-    correction_base_url: str = Field("https://api.openai.com/v1", env="CORRECTION_BASE_URL")
-    correction_model: str = Field("gpt-4o-mini", env="CORRECTION_MODEL")
-    correction_temperature: float = Field(0.1, env="CORRECTION_TEMPERATURE")
-    correction_max_tokens: int = Field(4000, env="CORRECTION_MAX_TOKENS")
-    enable_correction_by_default: bool = Field(False, env="ENABLE_CORRECTION_BY_DEFAULT")
-    
     # Audio Processing Configuration
     max_chunk_size_mb: int = Field(24, env="MAX_CHUNK_SIZE_MB")
     chunk_timeout_seconds: int = Field(120, env="CHUNK_TIMEOUT_SECONDS")
@@ -192,14 +183,6 @@ class Settings(BaseSettings):
             raise ValueError(f"translation_provider must be one of: {valid_providers}")
         return v
 
-    @field_validator("correction_provider")
-    @classmethod
-    def validate_correction_provider(cls, v):
-        valid_providers = ["openai", "azure", "anthropic"]
-        if v not in valid_providers:
-            raise ValueError(f"correction_provider must be one of: {valid_providers}")
-        return v
-
     @field_validator("local_model_name")
     @classmethod
     def validate_local_model_name(cls, v):
@@ -267,11 +250,6 @@ class Settings(BaseSettings):
     def effective_translation_api_key(self) -> str:
         """Get effective translation API key with fallback"""
         return self.translation_api_key or self.openai_api_key
-
-    @property
-    def effective_correction_api_key(self) -> str:
-        """Get effective correction API key with fallback"""
-        return self.correction_api_key or self.openai_api_key
 
     def get_local_model_config(self):
         """

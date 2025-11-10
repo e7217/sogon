@@ -13,7 +13,7 @@ from typing_extensions import Annotated
 # Import new architecture components
 from sogon.config import get_settings
 from sogon.services.interfaces import (
-    AudioService, TranscriptionService, CorrectionService, 
+    AudioService, TranscriptionService,
     YouTubeService, FileService, WorkflowService, TranslationService
 )
 from sogon.services.audio_service import AudioServiceImpl
@@ -37,7 +37,6 @@ class ServiceContainer:
         self._file_repository: Optional[FileRepository] = None
         self._audio_service: Optional[AudioService] = None
         self._transcription_service: Optional[TranscriptionService] = None
-        self._correction_service: Optional[CorrectionService] = None
         self._youtube_service: Optional[YouTubeService] = None
         self._file_service: Optional[FileService] = None
         self._translation_service: Optional[TranslationService] = None
@@ -68,14 +67,6 @@ class ServiceContainer:
                 provider=provider
             )
         return self._transcription_service
-    
-    @property
-    def correction_service(self) -> CorrectionService:
-        if self._correction_service is None:
-            # Import here to avoid circular imports
-            from sogon.services.correction_service import CorrectionServiceImpl
-            self._correction_service = CorrectionServiceImpl()
-        return self._correction_service
     
     @property
     def youtube_service(self) -> YouTubeService:
@@ -114,7 +105,6 @@ class ServiceContainer:
             self._workflow_service = WorkflowServiceImpl(
                 audio_service=self.audio_service,
                 transcription_service=self.transcription_service,
-                correction_service=self.correction_service,
                 youtube_service=self.youtube_service,
                 file_service=self.file_service,
                 translation_service=self.translation_service
@@ -168,8 +158,6 @@ async def process_input(
     input_path: str,
     services: ServiceContainer,
     output_format: str = "txt",
-    enable_correction: bool = True,
-    use_ai_correction: bool = True,
     keep_audio: bool = False,
     output_dir: Optional[str] = None,
     enable_translation: bool = False,
@@ -185,8 +173,6 @@ async def process_input(
         input_path: YouTube URL or local file path
         services: Service container with all dependencies
         output_format: Output format (txt, srt, vtt, json)
-        enable_correction: Enable text correction
-        use_ai_correction: Use AI-based correction
         keep_audio: Keep downloaded audio files
         output_dir: Custom output directory
         enable_translation: Enable translation
@@ -218,8 +204,6 @@ async def process_input(
                 url=input_path,
                 output_dir=base_output_dir,
                 format=output_format,
-                enable_correction=enable_correction,
-                use_ai_correction=use_ai_correction,
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
@@ -233,14 +217,12 @@ async def process_input(
             if not file_path.exists():
                 logger.error(f"File not found: {file_path}")
                 return False
-            
+
             logger.info(f"Processing local file: {file_path}")
             job = await services.workflow_service.process_local_file(
                 file_path=file_path,
                 output_dir=base_output_dir,
                 format=output_format,
-                enable_correction=enable_correction,
-                use_ai_correction=use_ai_correction,
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
@@ -291,11 +273,10 @@ app = typer.Typer(
   # API-based transcription
   sogon run "https://youtube.com/watch?v=..."
   sogon run "audio.mp3" --format srt
-  sogon run "video.mp4" --correction --output-dir ./results
+  sogon run "video.mp4" --output-dir ./results
 
   # Translation
   sogon run "video.mp4" --translate --target-language ko
-  sogon run "video.mp4" --correction --ai-correction --translate --target-language ko
 
   # Custom API provider
   sogon run "video.mp4" --whisper-model whisper-1 --whisper-base-url https://api.openai.com/v1
@@ -313,15 +294,13 @@ def process(
     input_path: Annotated[str, typer.Argument(help="YouTube URL or local audio/video file path")],
     format: Annotated[str, typer.Option("--format", "-f", help="Output subtitle format")] = "txt",
     output_dir: Annotated[Optional[str], typer.Option("--output-dir", "-o", help="Output directory (default: ./result)")] = None,
-    correction: Annotated[bool, typer.Option("--correction", help="Enable text correction")] = False,
-    ai_correction: Annotated[bool, typer.Option("--ai-correction", help="Enable AI-based text correction")] = False,
     keep_audio: Annotated[bool, typer.Option("--keep-audio", help="Keep downloaded audio files")] = False,
     translate: Annotated[bool, typer.Option("--translate", help="Enable translation of subtitles")] = False,
     target_language: Annotated[Optional[str], typer.Option("--target-language", "-t", help="Target language for translation (e.g., ko, en, ja, zh-cn)")] = None,
     source_language: Annotated[Optional[str], typer.Option("--source-language", "-s", help="Source language for Whisper transcription (auto-detect if not specified)")] = None,
     whisper_model: Annotated[Optional[str], typer.Option("--whisper-model", "-m", help="Whisper model to use (default: whisper-1)")] = None,
     whisper_base_url: Annotated[Optional[str], typer.Option("--whisper-base-url", help="Whisper API base URL (default: OpenAI API)")] = None,
-    openai_model: Annotated[Optional[str], typer.Option("--openai-model", help="OpenAI model for correction/translation (default: gpt-4o-mini)")] = None,
+    openai_model: Annotated[Optional[str], typer.Option("--openai-model", help="OpenAI model for translation (default: gpt-4o-mini)")] = None,
     openai_base_url: Annotated[Optional[str], typer.Option("--openai-base-url", help="OpenAI API base URL (default: https://api.openai.com/v1)")] = None,
     # Local model configuration flags (FR-019)
     local_model: Annotated[Optional[str], typer.Option("--local-model", help="Local Whisper model name (tiny, base, small, medium, large, large-v2, large-v3)")] = None,
@@ -401,16 +380,10 @@ def process(
             typer.echo("\nTo enable local model support, install with:", err=True)
             typer.echo("  pip install sogon[local]", err=True)
         raise typer.Exit(1)
-    
-    # Determine effective correction settings
-    effective_correction = correction or services.settings.enable_correction_by_default
-    effective_ai_correction = ai_correction or (effective_correction and services.settings.enable_correction_by_default)
 
     # Log configuration
     logger.info(f"Input: {input_path}")
     logger.info(f"Format: {format.upper()}")
-    logger.info(f"Text correction: {'enabled' if effective_correction else 'disabled'}")
-    logger.info(f"AI correction: {'enabled' if effective_ai_correction else 'disabled'}")
     logger.info(f"Keep audio: {'yes' if keep_audio else 'no'}")
     if translate:
         logger.info(f"Translation: → {target_language}")
@@ -426,8 +399,6 @@ def process(
                 input_path=input_path,
                 services=services,
                 output_format=format,
-                enable_correction=effective_correction,
-                use_ai_correction=effective_ai_correction,
                 keep_audio=keep_audio,
                 output_dir=output_dir,
                 enable_translation=translate,
