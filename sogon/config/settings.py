@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=True
     )
     
     @field_validator("openai_api_key")
@@ -203,7 +203,7 @@ class Settings(BaseSettings):
     @field_validator("local_model_name")
     @classmethod
     def validate_local_model_name(cls, v):
-        valid_models = {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}
+        valid_models = {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3", "large-v3-turbo"}
         if v not in valid_models:
             raise ValueError(f"local_model_name must be one of: {sorted(valid_models)}")
         return v
