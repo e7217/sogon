@@ -5,7 +5,7 @@ This file defines the abstract interface that ALL transcription providers must i
 It serves as the contract for:
 - OpenAIProvider (existing)
 - GroqProvider (existing)
-- FasterWhisperProvider (new - local models)
+- StableWhisperProvider (local models)
 
 Contract ensures all providers produce identical output format (FR-011).
 """
@@ -36,7 +36,7 @@ class TranscriptionProvider(ABC):
         Unique identifier for this provider.
 
         Returns:
-            str: Provider name (e.g., "openai", "groq", "faster-whisper")
+            str: Provider name (e.g., "openai", "groq", "stable-whisper")
         """
         pass
 
@@ -50,7 +50,7 @@ class TranscriptionProvider(ABC):
             bool: True if provider is ready to transcribe
 
         Example:
-            >>> provider = FasterWhisperProvider(config)
+            >>> provider = StableWhisperProvider(config)
             >>> if provider.is_available:
             ...     result = await provider.transcribe(audio)
         """
@@ -81,7 +81,7 @@ class TranscriptionProvider(ABC):
 
         Example:
             >>> config = TranscriptionConfig(
-            ...     provider="faster-whisper",
+            ...     provider="stable-whisper",
             ...     model="base",
             ...     language="en"
             ... )
@@ -103,7 +103,7 @@ class TranscriptionProvider(ABC):
             ConfigurationError: If configuration is invalid with specific reason
 
         Example:
-            >>> config = TranscriptionConfig(provider="faster-whisper")
+            >>> config = TranscriptionConfig(provider="stable-whisper")
             >>> provider.validate_config(config)  # Raises if local config missing
         """
         pass
@@ -117,9 +117,9 @@ class TranscriptionProvider(ABC):
             list[str]: Package names that must be installed
 
         Example:
-            >>> provider = FasterWhisperProvider(config)
+            >>> provider = StableWhisperProvider(config)
             >>> provider.get_required_dependencies()
-            ['faster-whisper', 'torch', 'huggingface-hub', 'psutil']
+            ['stable-ts', 'torch', 'huggingface-hub', 'psutil']
         """
         pass
 

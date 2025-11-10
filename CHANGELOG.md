@@ -7,10 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **FasterWhisperProvider**: Removed unused FasterWhisperProvider implementation (use StableWhisperProvider instead)
+  - Simplified codebase by removing redundant local model provider
+  - StableWhisperProvider remains as the sole local model implementation
+
 ### Added
 
 #### Local Whisper Model Support
-- **Local Model Inference**: Added support for offline transcription using faster-whisper library
+- **Local Model Inference**: Added support for offline transcription using stable-whisper library
   - No API key required for local model usage
   - Support for 7 Whisper model sizes: tiny, base, small, medium, large, large-v2, large-v3
   - Automatic model download and caching on first use
@@ -31,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--local-max-workers`: Control concurrent processing (1-10)
 
 - **Environment Variable Configuration**:
-  - `SOGON_PROVIDER`: Set default transcription provider (faster-whisper/openai/groq)
+  - `SOGON_PROVIDER`: Set default transcription provider (stable-whisper/openai/groq)
   - `SOGON_LOCAL_MODEL_NAME`: Default local model
   - `SOGON_LOCAL_DEVICE`: Default compute device
   - `SOGON_LOCAL_COMPUTE_TYPE`: Default precision
@@ -51,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Provider Architecture**:
   - Abstract `TranscriptionProvider` interface for extensibility
-  - `FasterWhisperProvider` implementation with async support
+  - `StableWhisperProvider` implementation with async support
   - Device selector with capability detection
   - Resource monitor for system validation
   - Model manager with download progress tracking
@@ -67,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Provider Pattern**: Gradual migration strategy allowing coexistence of legacy and new providers
 - **Lazy Loading**: Provider instantiation deferred until first use to avoid circular dependencies
-- **Auto-Provider Switching**: Using `--local-model` flag automatically sets provider to "faster-whisper"
+- **Auto-Provider Switching**: Using `--local-model` flag automatically sets provider to "stable-whisper"
 - **Priority Configuration**: CLI flags > Environment variables > Default values
 - **Test Coverage**: 100% unit test coverage for all local model components
 - **Integration Tests**: Comprehensive E2E tests for local transcription workflows
@@ -95,7 +100,7 @@ sogon run "video.mp4" --local-model base --local-device cuda
 sogon run "video.mp4" --local-model large-v3
 
 # Environment variable configuration
-export SOGON_PROVIDER=faster-whisper
+export SOGON_PROVIDER=stable-whisper
 export SOGON_LOCAL_MODEL_NAME=medium
 sogon run "video.mp4"
 ```

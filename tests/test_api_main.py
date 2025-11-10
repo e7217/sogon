@@ -53,8 +53,7 @@ class TestAPIMain(unittest.TestCase):
         # Check config structure
         config = data["config"]
         expected_config_keys = [
-            "host", "port", "debug", "base_output_dir",
-            "enable_correction", "use_ai_correction"
+            "host", "port", "debug", "base_output_dir"
         ]
         for key in expected_config_keys:
             self.assertIn(key, config)
@@ -67,21 +66,17 @@ class TestAPIMain(unittest.TestCase):
         mock_config.port = 9000
         mock_config.debug = True
         mock_config.base_output_dir = "/custom/output"
-        mock_config.enable_correction = False
-        mock_config.use_ai_correction = False
-        
+
         response = self.client.get("/health")
-        
+
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        
+
         config = data["config"]
         self.assertEqual(config["host"], "192.168.1.100")
         self.assertEqual(config["port"], 9000)
         self.assertEqual(config["debug"], True)
         self.assertEqual(config["base_output_dir"], "/custom/output")
-        self.assertEqual(config["enable_correction"], False)
-        self.assertEqual(config["use_ai_correction"], False)
 
     @patch('sogon.api.main.datetime')
     def test_health_endpoint_exception_handling(self, mock_datetime):
@@ -480,15 +475,11 @@ class TestRequestResponseModels(unittest.TestCase):
         """Test TranscribeRequest model validation"""
         valid_data = {
             "url": "https://www.youtube.com/watch?v=test",
-            "enable_correction": True,
-            "use_ai_correction": False,
             "subtitle_format": "srt"
         }
-        
+
         request = TranscribeRequest(**valid_data)
         self.assertEqual(str(request.url), "https://www.youtube.com/watch?v=test")
-        self.assertTrue(request.enable_correction)
-        self.assertFalse(request.use_ai_correction)
         self.assertEqual(request.subtitle_format, "srt")
 
     def test_transcribe_request_defaults(self):
@@ -496,10 +487,8 @@ class TestRequestResponseModels(unittest.TestCase):
         minimal_data = {
             "url": "https://example.com/video"
         }
-        
+
         request = TranscribeRequest(**minimal_data)
-        self.assertFalse(request.enable_correction)  # Default
-        self.assertFalse(request.use_ai_correction)  # Default
         self.assertEqual(request.subtitle_format, "txt")  # Default
         self.assertFalse(request.keep_audio)  # Default
 
@@ -507,16 +496,12 @@ class TestRequestResponseModels(unittest.TestCase):
         """Test TranscribeRequest model with keep_audio option"""
         data = {
             "url": "https://www.youtube.com/watch?v=test",
-            "enable_correction": True,
-            "use_ai_correction": False,
             "subtitle_format": "srt",
             "keep_audio": True
         }
-        
+
         request = TranscribeRequest(**data)
         self.assertEqual(str(request.url), "https://www.youtube.com/watch?v=test")
-        self.assertTrue(request.enable_correction)
-        self.assertFalse(request.use_ai_correction)
         self.assertEqual(request.subtitle_format, "srt")
         self.assertTrue(request.keep_audio)
 

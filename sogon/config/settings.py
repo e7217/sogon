@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Transcription Service Configuration
     transcription_provider: str = Field("groq", env="TRANSCRIPTION_PROVIDER")
-    transcription_api_key: str = Field(None, env="TRANSCRIPTION_API_KEY")
+    transcription_api_key: str | None = Field(None, env="TRANSCRIPTION_API_KEY")
     transcription_base_url: str = Field("https://api.groq.com/openai/v1", env="TRANSCRIPTION_BASE_URL")
     transcription_model: str = Field("whisper-large-v3-turbo", env="TRANSCRIPTION_MODEL")
     transcription_temperature: float = Field(0.0, env="TRANSCRIPTION_TEMPERATURE")
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Translation Service Configuration
     translation_provider: str = Field("openai", env="TRANSLATION_PROVIDER")
-    translation_api_key: str = Field(None, env="TRANSLATION_API_KEY")
+    translation_api_key: str | None = Field(None, env="TRANSLATION_API_KEY")
     translation_base_url: str = Field("https://api.openai.com/v1", env="TRANSLATION_BASE_URL")
     translation_model: str = Field("gpt-4o-mini", env="TRANSLATION_MODEL")
     translation_temperature: float = Field(0.3, env="TRANSLATION_TEMPERATURE")
@@ -73,7 +73,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=True
+        case_sensitive=True,
+        extra="ignore"
     )
     
     @field_validator("openai_api_key")

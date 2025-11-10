@@ -2,7 +2,7 @@
 LocalModelConfiguration Schema
 
 Defines the data schema for local Whisper model configuration.
-Used by FasterWhisperProvider and validated by Pydantic.
+Used by StableWhisperProvider and validated by Pydantic.
 """
 
 from pathlib import Path
