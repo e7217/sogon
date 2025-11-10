@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from .interfaces import WorkflowService, AudioService, TranscriptionService, CorrectionService, YouTubeService, FileService, TranslationService
+from .interfaces import WorkflowService, AudioService, TranscriptionService, YouTubeService, FileService, TranslationService
 from ..models.job import ProcessingJob, JobStatus, JobType
 from ..models.audio import AudioFile
 from ..models.translation import SupportedLanguage, TranslationResult
@@ -27,19 +27,17 @@ class WorkflowServiceImpl(WorkflowService):
         self,
         audio_service: AudioService,
         transcription_service: TranscriptionService,
-        correction_service: CorrectionService,
         youtube_service: YouTubeService,
         file_service: FileService,
         translation_service: Optional[TranslationService] = None
     ):
         self.audio_service = audio_service
         self.transcription_service = transcription_service
-        self.correction_service = correction_service
         self.youtube_service = youtube_service
         self.file_service = file_service
         self.translation_service = translation_service
         self.settings = get_settings()
-        
+
         # In-memory job storage (in production, use repository)
         self._jobs = {}
     
@@ -48,8 +46,6 @@ class WorkflowServiceImpl(WorkflowService):
         url: str,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = False,
-        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
@@ -63,10 +59,6 @@ class WorkflowServiceImpl(WorkflowService):
         from ..config import get_settings
         settings = get_settings()
 
-        # Apply default correction settings if not explicitly set
-        effective_correction = enable_correction or settings.enable_correction_by_default
-        effective_ai_correction = use_ai_correction or (effective_correction and settings.enable_correction_by_default)
-
         job_id = str(uuid.uuid4())
         job = ProcessingJob(
             id=job_id,
@@ -74,8 +66,6 @@ class WorkflowServiceImpl(WorkflowService):
             input_path=url,
             output_directory=str(output_dir),
             subtitle_format=format,
-            enable_correction=effective_correction,
-            use_ai_correction=effective_ai_correction,
             keep_audio=keep_audio,
             enable_translation=enable_translation,
             translation_target_language=translation_target_language.value if translation_target_language else None,
@@ -98,8 +88,6 @@ class WorkflowServiceImpl(WorkflowService):
         file_path: Path,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = False,
-        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
@@ -113,10 +101,6 @@ class WorkflowServiceImpl(WorkflowService):
         from ..config import get_settings
         settings = get_settings()
 
-        # Apply default correction settings if not explicitly set
-        effective_correction = enable_correction or settings.enable_correction_by_default
-        effective_ai_correction = use_ai_correction or (effective_correction and settings.enable_correction_by_default)
-
         job_id = str(uuid.uuid4())
         job = ProcessingJob(
             id=job_id,
@@ -124,8 +108,6 @@ class WorkflowServiceImpl(WorkflowService):
             input_path=str(file_path),
             output_directory=str(output_dir),
             subtitle_format=format,
-            enable_correction=effective_correction,
-            use_ai_correction=effective_ai_correction,
             keep_audio=keep_audio,
             enable_translation=enable_translation,
             translation_target_language=translation_target_language.value if translation_target_language else None,
@@ -310,44 +292,21 @@ class WorkflowServiceImpl(WorkflowService):
                 transcription.to_dict(), job.actual_output_dir, base_name
             )
             
-            # Step 4: Apply correction if enabled
-            final_transcription = transcription
-            if job.enable_correction:
-                logger.info("Applying text correction")
-                job.status = JobStatus.CORRECTING
-                corrected_transcription = await self.correction_service.correct_transcription(
-                    transcription, job.use_ai_correction
-                )
-                final_transcription = corrected_transcription
-                
-                # Save corrected version
-                await self.file_service.save_transcription(
-                    corrected_transcription, job.actual_output_dir, f"{base_name}_corrected", job.subtitle_format
-                )
-                await self.file_service.save_timestamps(
-                    corrected_transcription, job.actual_output_dir, f"{base_name}_corrected"
-                )
-                await self.file_service.save_metadata(
-                    corrected_transcription.to_dict(), job.actual_output_dir, f"{base_name}_corrected"
-                )
-            
-            # Step 5: Apply translation if enabled
+            # Step 4: Apply translation if enabled
             if job.enable_translation and job.translation_target_language and self.translation_service:
                 logger.info(f"Applying translation to {job.translation_target_language}")
                 job.status = JobStatus.TRANSLATING
                 
                 target_language = SupportedLanguage(job.translation_target_language)
                 translation_result = await self.translation_service.translate_transcription(
-                    final_transcription, target_language, job.whisper_source_language
+                    transcription, target_language, job.whisper_source_language
                 )
                 
                 # Save translated version
                 suffix = "_translated"
-                if job.enable_correction:
-                    suffix = "_corrected_translated"
                 
                 # Convert translation result to transcription format for saving
-                translated_transcription = self._translation_to_transcription(translation_result, final_transcription)
+                translated_transcription = self._translation_to_transcription(translation_result, transcription)
                 
                 await self.file_service.save_transcription(
                     translated_transcription, job.actual_output_dir, f"{base_name}{suffix}", job.subtitle_format
@@ -359,7 +318,7 @@ class WorkflowServiceImpl(WorkflowService):
                     translation_result.to_dict(), job.actual_output_dir, f"{base_name}{suffix}"
                 )
             
-            # Step 6: Cleanup chunks if multiple were created
+            # Step 5: Cleanup chunks if multiple were created
             if len(chunks) > 1:
                 await self.audio_service.cleanup_chunks(chunks)
             

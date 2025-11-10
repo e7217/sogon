@@ -23,7 +23,6 @@ class JobStatus(Enum):
     DOWNLOADING = "downloading"
     SPLITTING = "splitting"
     TRANSCRIBING = "transcribing"
-    CORRECTING = "correcting"
     TRANSLATING = "translating"
     SAVING = "saving"
     COMPLETED = "completed"
@@ -41,9 +40,8 @@ class JobStatus(Enum):
         """Check if job is currently processing"""
         return self in {
             JobStatus.DOWNLOADING,
-            JobStatus.SPLITTING, 
+            JobStatus.SPLITTING,
             JobStatus.TRANSCRIBING,
-            JobStatus.CORRECTING,
             JobStatus.TRANSLATING,
             JobStatus.SAVING
         }
@@ -97,18 +95,15 @@ class ProcessingJob:
     
     # Configuration
     subtitle_format: str = "txt"
-    enable_correction: bool = True
-    use_ai_correction: bool = True
     keep_audio: bool = False
     enable_translation: bool = False
     translation_target_language: Optional[str] = None
     whisper_source_language: Optional[str] = None  # None means auto-detect
     whisper_model: Optional[str] = None  # None means use default
     whisper_base_url: Optional[str] = None  # None means use default API
-    
+
     # Results
     original_files: Optional[Dict[str, str]] = None  # {type: path}
-    corrected_files: Optional[Dict[str, str]] = None  # {type: path}
     translated_files: Optional[Dict[str, str]] = None  # {type: path}
     error_message: Optional[str] = None
     
@@ -150,16 +145,14 @@ class ProcessingJob:
             self.started_at = datetime.now()
     
     def complete(
-        self, 
-        original_files: Dict[str, str], 
-        corrected_files: Optional[Dict[str, str]] = None,
+        self,
+        original_files: Dict[str, str],
         translated_files: Optional[Dict[str, str]] = None
     ) -> None:
         """Mark job as completed with results"""
         self.status = JobStatus.COMPLETED
         self.completed_at = datetime.now()
         self.original_files = original_files
-        self.corrected_files = corrected_files
         self.translated_files = translated_files
         self.error_message = None
     
@@ -213,8 +206,6 @@ class ProcessingJob:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration": self.duration,
             "subtitle_format": self.subtitle_format,
-            "enable_correction": self.enable_correction,
-            "use_ai_correction": self.use_ai_correction,
             "keep_audio": self.keep_audio,
             "enable_translation": self.enable_translation,
             "translation_target_language": self.translation_target_language,
@@ -222,7 +213,6 @@ class ProcessingJob:
             "whisper_model": self.whisper_model,
             "whisper_base_url": self.whisper_base_url,
             "original_files": self.original_files,
-            "corrected_files": self.corrected_files,
             "translated_files": self.translated_files,
             "error_message": self.error_message,
             "metadata": self.metadata
@@ -237,8 +227,6 @@ class ProcessingJob:
             output_directory=data.get("output_directory"),
             status=JobStatus(data["status"]),
             subtitle_format=data.get("subtitle_format", "txt"),
-            enable_correction=data.get("enable_correction", True),
-            use_ai_correction=data.get("use_ai_correction", True),
             keep_audio=data.get("keep_audio", False),
             enable_translation=data.get("enable_translation", False),
             translation_target_language=data.get("translation_target_language"),
@@ -246,7 +234,6 @@ class ProcessingJob:
             whisper_model=data.get("whisper_model"),
             whisper_base_url=data.get("whisper_base_url"),
             original_files=data.get("original_files"),
-            corrected_files=data.get("corrected_files"),
             translated_files=data.get("translated_files"),
             error_message=data.get("error_message"),
             metadata=data.get("metadata", {})
@@ -280,11 +267,10 @@ class ProcessingJob:
 @dataclass
 class JobResult:
     """Result of a completed job"""
-    
+
     job_id: str
     success: bool
     original_files: Optional[Dict[str, str]] = None
-    corrected_files: Optional[Dict[str, str]] = None
     translated_files: Optional[Dict[str, str]] = None
     error_message: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -302,25 +288,14 @@ class JobResult:
         if not self.original_files:
             return None
         return self.original_files.get("metadata")
-    
-    @property
-    def corrected_subtitle_file(self) -> Optional[str]:
-        """Get corrected subtitle file path"""
-        if not self.corrected_files:
-            return None
-        return self.corrected_files.get("subtitle")
-    
+
     @property
     def translated_subtitle_file(self) -> Optional[str]:
         """Get translated subtitle file path"""
         if not self.translated_files:
             return None
         return self.translated_files.get("subtitle")
-    
-    def has_correction(self) -> bool:
-        """Check if correction was performed"""
-        return self.corrected_files is not None and len(self.corrected_files) > 0
-    
+
     def has_translation(self) -> bool:
         """Check if translation was performed"""
         return self.translated_files is not None and len(self.translated_files) > 0

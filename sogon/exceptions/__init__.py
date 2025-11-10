@@ -19,11 +19,6 @@ from .transcription import (
     TranscriptionModelError,
     TranscriptionQuotaError
 )
-from .correction import (
-    CorrectionError,
-    CorrectionAPIError,
-    CorrectionTimeoutError
-)
 from .job import (
     JobError,
     JobNotFoundError,
@@ -62,12 +57,7 @@ __all__ = [
     "TranscriptionTimeoutError",
     "TranscriptionModelError",
     "TranscriptionQuotaError",
-    
-    # Correction exceptions
-    "CorrectionError",
-    "CorrectionAPIError",
-    "CorrectionTimeoutError",
-    
+
     # Job exceptions
     "JobError",
     "JobNotFoundError",

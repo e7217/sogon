@@ -9,7 +9,6 @@ from pathlib import Path
 from ..models.audio import AudioFile, AudioChunk, AudioProcessingMetadata
 from ..models.transcription import TranscriptionResult, TranscriptionSegment
 from ..models.job import ProcessingJob, JobStatus
-from ..models.correction import CorrectionResult
 from ..models.translation import TranslationResult, TranslationRequest, SupportedLanguage
 
 
@@ -53,20 +52,6 @@ class TranscriptionService(ABC):
     @abstractmethod
     async def combine_transcriptions(self, results: List[TranscriptionResult]) -> TranscriptionResult:
         """Combine multiple transcription results"""
-        pass
-
-
-class CorrectionService(ABC):
-    """Interface for text correction operations"""
-    
-    @abstractmethod
-    async def correct_text(self, text: str, use_ai: bool = True) -> CorrectionResult:
-        """Correct transcribed text"""
-        pass
-    
-    @abstractmethod
-    async def correct_transcription(self, transcription: TranscriptionResult, use_ai: bool = True) -> TranscriptionResult:
-        """Correct transcription with metadata preservation"""
         pass
 
 
@@ -183,8 +168,6 @@ class WorkflowService(ABC):
         url: str,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = False,
-        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,
@@ -194,15 +177,13 @@ class WorkflowService(ABC):
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
         pass
-    
+
     @abstractmethod
     async def process_local_file(
         self,
         file_path: Path,
         output_dir: Path,
         format: str = "txt",
-        enable_correction: bool = False,
-        use_ai_correction: bool = False,
         keep_audio: bool = False,
         enable_translation: bool = False,
         translation_target_language: Optional[SupportedLanguage] = None,

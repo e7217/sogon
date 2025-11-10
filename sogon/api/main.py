@@ -15,7 +15,7 @@ from ..models.translation import SupportedLanguage
 from ..models.job import JobStatus
 from ..config import get_settings
 from ..services.interfaces import (
-    AudioService, TranscriptionService, CorrectionService,
+    AudioService, TranscriptionService,
     YouTubeService, FileService, WorkflowService, TranslationService
 )
 from ..services.audio_service import AudioServiceImpl
@@ -45,8 +45,6 @@ app = FastAPI(
 class TranscribeRequest(BaseModel):
     """Transcribe request model for URL input"""
     url: HttpUrl
-    enable_correction: bool = False
-    use_ai_correction: bool = False
     subtitle_format: str = "txt"
     keep_audio: bool = False
     enable_translation: bool = False
@@ -93,7 +91,6 @@ class APIServiceContainer:
         self._file_repository: Optional[FileRepository] = None
         self._audio_service: Optional[AudioService] = None
         self._transcription_service: Optional[TranscriptionService] = None
-        self._correction_service: Optional[CorrectionService] = None
         self._youtube_service: Optional[YouTubeService] = None
         self._file_service: Optional[FileService] = None
         self._translation_service: Optional[TranslationService] = None
@@ -121,20 +118,6 @@ class APIServiceContainer:
                 max_workers=self.settings.max_workers
             )
         return self._transcription_service
-
-    @property
-    def correction_service(self) -> CorrectionService:
-        if self._correction_service is None:
-            if not self.settings.openai_api_key:
-                raise ValueError("OpenAI API key is required for correction service. Set OPENAI_API_KEY environment variable.")
-            from ..services.correction_service import CorrectionServiceImpl
-            self._correction_service = CorrectionServiceImpl(
-                api_key=self.settings.openai_api_key,
-                base_url=self.settings.openai_base_url,
-                model=self.settings.openai_model,
-                temperature=self.settings.openai_temperature
-            )
-        return self._correction_service
 
     @property
     def youtube_service(self) -> YouTubeService:
@@ -178,7 +161,6 @@ class APIServiceContainer:
             self._workflow_service = WorkflowServiceImpl(
                 audio_service=self.audio_service,
                 transcription_service=self.transcription_service,
-                correction_service=self.correction_service,
                 youtube_service=self.youtube_service,
                 file_service=self.file_service,
                 translation_service=self.translation_service
@@ -204,9 +186,7 @@ async def health_check():
                 "host": config.host,
                 "port": config.port,
                 "debug": config.debug,
-                "base_output_dir": config.base_output_dir,
-                "enable_correction": config.enable_correction,
-                "use_ai_correction": config.use_ai_correction
+                "base_output_dir": config.base_output_dir
             }
         )
     except Exception as e:
@@ -232,8 +212,6 @@ def update_job_safely(job_id: str, updates: dict) -> bool:
 async def process_transcription_task(
     job_id: str,
     input_path: str,
-    enable_correction: bool,
-    use_ai_correction: bool,
     subtitle_format: str,
     keep_audio: bool = False,
     enable_translation: bool = False,
@@ -268,8 +246,6 @@ async def process_transcription_task(
                 url=input_path,
                 output_dir=base_output_dir,
                 format=subtitle_format,
-                enable_correction=enable_correction,
-                use_ai_correction=use_ai_correction,
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
@@ -287,8 +263,6 @@ async def process_transcription_task(
                 file_path=file_path,
                 output_dir=base_output_dir,
                 format=subtitle_format,
-                enable_correction=enable_correction,
-                use_ai_correction=use_ai_correction,
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
                 translation_target_language=target_lang,
@@ -327,8 +301,6 @@ async def process_transcription_task(
                 "output_directory": str(job.actual_output_dir) if job.actual_output_dir else str(base_output_dir),
                 "job_details": {
                     "format": subtitle_format,
-                    "correction_enabled": enable_correction,
-                    "ai_correction_enabled": use_ai_correction,
                     "translation_enabled": enable_translation,
                     "whisper_model": whisper_model,
                     "whisper_base_url": whisper_base_url
@@ -351,13 +323,6 @@ async def transcribe_url(request: TranscribeRequest, background_tasks: Backgroun
     """Submit URL for transcription"""
     job_id = str(uuid.uuid4())
 
-    # Get settings for default values
-    settings = get_settings()
-
-    # Apply default correction settings if not explicitly set
-    effective_correction = request.enable_correction or settings.enable_correction_by_default
-    effective_ai_correction = request.use_ai_correction or (effective_correction and settings.enable_correction_by_default)
-
     # Initialize job
     jobs[job_id] = {
         "status": "pending",
@@ -372,8 +337,6 @@ async def transcribe_url(request: TranscribeRequest, background_tasks: Backgroun
         process_transcription_task,
         job_id,
         str(request.url),
-        effective_correction,
-        effective_ai_correction,
         request.subtitle_format,
         request.keep_audio,
         request.enable_translation,
@@ -396,8 +359,6 @@ async def transcribe_url(request: TranscribeRequest, background_tasks: Backgroun
 async def transcribe_upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    enable_correction: bool = Form(False),
-    use_ai_correction: bool = Form(False),
     subtitle_format: str = Form("txt"),
     keep_audio: bool = Form(False),
     enable_translation: bool = Form(False),
@@ -408,13 +369,6 @@ async def transcribe_upload(
 ):
     """Upload file for transcription"""
     job_id = str(uuid.uuid4())
-
-    # Get settings for default values
-    settings = get_settings()
-
-    # Apply default correction settings if not explicitly set
-    effective_correction = enable_correction or settings.enable_correction_by_default
-    effective_ai_correction = use_ai_correction or (effective_correction and settings.enable_correction_by_default)
 
     # Save uploaded file
     upload_dir = Path(config.base_output_dir) / "uploads"
@@ -442,8 +396,6 @@ async def transcribe_upload(
             process_transcription_task,
             job_id,
             str(file_path),
-            effective_correction,
-            effective_ai_correction,
             subtitle_format,
             keep_audio,
             enable_translation,
@@ -501,8 +453,6 @@ async def download_result(job_id: str, file_type: str = "original"):
     
     if file_type == "original" and result.get("original_files"):
         file_path = result["original_files"][0]  # subtitle file
-    elif file_type == "corrected" and result.get("corrected_files"):
-        file_path = result["corrected_files"][0]  # corrected subtitle file
     elif file_type == "translated" and result.get("translated_files"):
         file_path = result["translated_files"][0]  # translated subtitle file
     else:
