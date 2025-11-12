@@ -24,7 +24,7 @@ class TranslationError(SogonError):
 class TranslationServiceImpl(TranslationService):
     """Implementation of TranslationService using OpenAI SDK"""
     
-    def __init__(self, api_key: str = None, base_url: str = None, model: str = None, temperature: float = None, max_concurrent_requests: int = None):
+    def __init__(self, api_key: str = None, base_url: str = None, model: str = None, temperature: float = None, max_concurrent_requests: int = None, max_tokens: int = None):
         from ..config import get_settings
         settings = get_settings()
 
@@ -34,6 +34,7 @@ class TranslationServiceImpl(TranslationService):
         self.model = model or settings.translation_model
         self.temperature = temperature if temperature is not None else settings.translation_temperature
         self.max_concurrent_requests = max_concurrent_requests or settings.openai_max_concurrent_requests
+        self.max_tokens = max_tokens or settings.translation_max_tokens
 
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=1200.0)
         self.semaphore = asyncio.Semaphore(self.max_concurrent_requests)
@@ -71,7 +72,7 @@ class TranslationServiceImpl(TranslationService):
                         {"role": "user", "content": prompt}
                     ],
                     temperature=self.temperature,
-                    **self._get_max_tokens_param(4000)
+                    **self._get_max_tokens_param(self.max_tokens)
                 )
             
             translated_text = response.choices[0].message.content.strip()
@@ -219,7 +220,7 @@ class TranslationServiceImpl(TranslationService):
                             {"role": "user", "content": prompt}
                         ],
                         temperature=self.temperature,
-                        **self._get_max_tokens_param(4000)
+                        **self._get_max_tokens_param(self.max_tokens)
                     )
                 
                 translated_text = response.choices[0].message.content.strip()
@@ -306,18 +307,19 @@ class TranslationServiceImpl(TranslationService):
                                 confidence_score=segment.confidence
                             )
                             translated_segments.append(translated_segment)
-            
-            # Translate full text for completeness
-            full_translation = await self.translate_text(
-                transcription.text, target_language
+
+            # Combine translated segments into full text
+            # This avoids hitting token limits for long transcriptions
+            full_translated_text = " ".join(
+                seg.translated_text for seg in translated_segments
             )
-            
+
             processing_time = time.time() - start_time
-            
+
             # Create result with segments
             result = TranslationResult(
                 original_text=transcription.text,
-                translated_text=full_translation.translated_text,
+                translated_text=full_translated_text,
                 source_language=source_language,
                 target_language=target_language,
                 segments=translated_segments,

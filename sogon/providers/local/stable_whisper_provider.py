@@ -203,11 +203,11 @@ class StableWhisperProvider(TranscriptionProvider):
                 language=self.config.language,
                 beam_size=self.config.beam_size,
                 temperature=self.config.temperature,
-                # stable-ts specific parameters for better subtitle quality
-                vad=self.config.vad_filter,  # stable-ts uses 'vad' parameter instead of 'vad_filter'
-                suppress_silence=True,  # Adjust timestamps based on silence
+                vad=True,  # stable-ts uses 'vad' parameter instead of 'vad_filter'
+                suppress_silence=False,  # Adjust timestamps based on silence
                 word_timestamps=True,   # Word-level timing
                 regroup=True,          # Smart segment regrouping
+                condition_on_previous_text=False # Avoid bias from previous segments
             )
 
             # Convert stable-ts WhisperResult to our format
