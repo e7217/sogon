@@ -79,7 +79,7 @@ class JobProgress:
 @dataclass
 class ProcessingJob:
     """Represents a processing job with status and metadata"""
-    
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     job_type: Optional[JobType] = None
     input_path: str = ""
@@ -87,11 +87,19 @@ class ProcessingJob:
     actual_output_dir: Optional[str] = None
     status: JobStatus = JobStatus.PENDING
     progress: Optional[JobProgress] = None
-    
+
     # Timestamps
     created_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+    # Queue and retry management (added for async queue)
+    enqueued_at: Optional[datetime] = None
+    dequeued_at: Optional[datetime] = None
+    retry_count: int = 0
+    max_retries: int = 3
+    last_error: Optional[str] = None
+    next_retry_at: Optional[datetime] = None
     
     # Configuration
     subtitle_format: str = "txt"
@@ -161,6 +169,7 @@ class ProcessingJob:
         self.status = JobStatus.FAILED
         self.completed_at = datetime.now()
         self.error_message = error_message
+        self.last_error = error_message
     
     def cancel(self) -> None:
         """Mark job as cancelled"""
@@ -180,17 +189,42 @@ class ProcessingJob:
     def add_metadata(self, key: str, value: Any) -> None:
         """Add metadata to job"""
         self.metadata[key] = value
-    
+
     def get_metadata(self, key: str, default: Any = None) -> Any:
         """Get metadata value"""
         return self.metadata.get(key, default)
+
+    def can_retry(self) -> bool:
+        """Check if job can be retried"""
+        return self.retry_count < self.max_retries
+
+    def increment_retry(self, error_message: str) -> None:
+        """Increment retry count and set error"""
+        self.retry_count += 1
+        self.last_error = error_message
+
+        # Calculate next retry time with exponential backoff
+        if self.can_retry():
+            delay_seconds = 2 ** self.retry_count  # 2, 4, 8 seconds
+            from datetime import timedelta
+            self.next_retry_at = datetime.now() + timedelta(seconds=delay_seconds)
+
+    def mark_enqueued(self) -> None:
+        """Mark job as enqueued"""
+        self.enqueued_at = datetime.now()
+
+    def mark_dequeued(self) -> None:
+        """Mark job as dequeued by worker"""
+        self.dequeued_at = datetime.now()
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert job to dictionary for serialization"""
         return {
             "id": self.id,
+            "job_type": self.job_type.value if self.job_type else None,
             "input_path": self.input_path,
             "output_directory": self.output_directory,
+            "actual_output_dir": str(self.actual_output_dir) if self.actual_output_dir else None,
             "status": self.status.value,
             "progress": {
                 "current_step": self.progress.current_step,
@@ -204,11 +238,17 @@ class ProcessingJob:
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "enqueued_at": self.enqueued_at.isoformat() if self.enqueued_at else None,
+            "dequeued_at": self.dequeued_at.isoformat() if self.dequeued_at else None,
             "duration": self.duration,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "last_error": self.last_error,
+            "next_retry_at": self.next_retry_at.isoformat() if self.next_retry_at else None,
             "subtitle_format": self.subtitle_format,
             "keep_audio": self.keep_audio,
             "enable_translation": self.enable_translation,
-            "translation_target_language": self.translation_target_language,
+            "translation_target_language": self.translation_target_language.value if self.translation_target_language else None,
             "whisper_source_language": self.whisper_source_language,
             "whisper_model": self.whisper_model,
             "whisper_base_url": self.whisper_base_url,
@@ -223,9 +263,14 @@ class ProcessingJob:
         """Create job from dictionary"""
         job = cls(
             id=data["id"],
+            job_type=JobType(data["job_type"]) if data.get("job_type") else None,
             input_path=data["input_path"],
             output_directory=data.get("output_directory"),
+            actual_output_dir=data.get("actual_output_dir"),
             status=JobStatus(data["status"]),
+            retry_count=data.get("retry_count", 0),
+            max_retries=data.get("max_retries", 3),
+            last_error=data.get("last_error"),
             subtitle_format=data.get("subtitle_format", "txt"),
             keep_audio=data.get("keep_audio", False),
             enable_translation=data.get("enable_translation", False),
@@ -238,14 +283,20 @@ class ProcessingJob:
             error_message=data.get("error_message"),
             metadata=data.get("metadata", {})
         )
-        
+
         # Parse timestamps
         job.created_at = datetime.fromisoformat(data["created_at"])
         if data.get("started_at"):
             job.started_at = datetime.fromisoformat(data["started_at"])
         if data.get("completed_at"):
             job.completed_at = datetime.fromisoformat(data["completed_at"])
-        
+        if data.get("enqueued_at"):
+            job.enqueued_at = datetime.fromisoformat(data["enqueued_at"])
+        if data.get("dequeued_at"):
+            job.dequeued_at = datetime.fromisoformat(data["dequeued_at"])
+        if data.get("next_retry_at"):
+            job.next_retry_at = datetime.fromisoformat(data["next_retry_at"])
+
         # Parse progress
         if data.get("progress"):
             progress_data = data["progress"]
@@ -256,7 +307,7 @@ class ProcessingJob:
                 current_step_progress=progress_data.get("current_step_progress", 0.0),
                 details=progress_data.get("details")
             )
-        
+
         return job
     
     def __str__(self) -> str:

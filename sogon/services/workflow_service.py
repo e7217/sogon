@@ -51,7 +51,8 @@ class WorkflowServiceImpl(WorkflowService):
         translation_target_language: Optional[SupportedLanguage] = None,
         whisper_source_language: Optional[str] = None,
         whisper_model: Optional[str] = None,
-        whisper_base_url: Optional[str] = None
+        whisper_base_url: Optional[str] = None,
+        job: Optional[ProcessingJob] = None
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
 
@@ -59,28 +60,33 @@ class WorkflowServiceImpl(WorkflowService):
         from ..config import get_settings
         settings = get_settings()
 
-        job_id = str(uuid.uuid4())
-        job = ProcessingJob(
-            id=job_id,
-            job_type=JobType.YOUTUBE_URL,
-            input_path=url,
-            output_directory=str(output_dir),
-            subtitle_format=format,
-            keep_audio=keep_audio,
-            enable_translation=enable_translation,
-            translation_target_language=translation_target_language.value if translation_target_language else None,
-            whisper_source_language=whisper_source_language,
-            whisper_model=whisper_model,
-            whisper_base_url=whisper_base_url,
-            status=JobStatus.PENDING,
-            created_at=datetime.now()
-        )
-        
-        self._jobs[job_id] = job
-        
-        # Start processing in background
-        asyncio.create_task(self._process_youtube_workflow(job))
-        
+        # Use provided job or create new one (for CLI compatibility)
+        if job is None:
+            job_id = str(uuid.uuid4())
+            job = ProcessingJob(
+                id=job_id,
+                job_type=JobType.YOUTUBE_URL,
+                input_path=url,
+                output_directory=str(output_dir),
+                subtitle_format=format,
+                keep_audio=keep_audio,
+                enable_translation=enable_translation,
+                translation_target_language=translation_target_language.value if translation_target_language else None,
+                whisper_source_language=whisper_source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url,
+                status=JobStatus.PENDING,
+                created_at=datetime.now()
+            )
+
+            self._jobs[job.id] = job
+
+            # Start processing in background (CLI mode)
+            asyncio.create_task(self._process_youtube_workflow(job))
+        else:
+            # Worker mode - process synchronously
+            await self._process_youtube_workflow(job)
+
         return job
     
     async def process_local_file(
@@ -93,7 +99,8 @@ class WorkflowServiceImpl(WorkflowService):
         translation_target_language: Optional[SupportedLanguage] = None,
         whisper_source_language: Optional[str] = None,
         whisper_model: Optional[str] = None,
-        whisper_base_url: Optional[str] = None
+        whisper_base_url: Optional[str] = None,
+        job: Optional[ProcessingJob] = None
     ) -> ProcessingJob:
         """Complete workflow for local file processing"""
 
@@ -101,28 +108,33 @@ class WorkflowServiceImpl(WorkflowService):
         from ..config import get_settings
         settings = get_settings()
 
-        job_id = str(uuid.uuid4())
-        job = ProcessingJob(
-            id=job_id,
-            job_type=JobType.LOCAL_FILE,
-            input_path=str(file_path),
-            output_directory=str(output_dir),
-            subtitle_format=format,
-            keep_audio=keep_audio,
-            enable_translation=enable_translation,
-            translation_target_language=translation_target_language.value if translation_target_language else None,
-            whisper_source_language=whisper_source_language,
-            whisper_model=whisper_model,
-            whisper_base_url=whisper_base_url,
-            status=JobStatus.PENDING,
-            created_at=datetime.now()
-        )
-        
-        self._jobs[job_id] = job
-        
-        # Start processing in background
-        asyncio.create_task(self._process_local_file_workflow(job))
-        
+        # Use provided job or create new one (for CLI compatibility)
+        if job is None:
+            job_id = str(uuid.uuid4())
+            job = ProcessingJob(
+                id=job_id,
+                job_type=JobType.LOCAL_FILE,
+                input_path=str(file_path),
+                output_directory=str(output_dir),
+                subtitle_format=format,
+                keep_audio=keep_audio,
+                enable_translation=enable_translation,
+                translation_target_language=translation_target_language.value if translation_target_language else None,
+                whisper_source_language=whisper_source_language,
+                whisper_model=whisper_model,
+                whisper_base_url=whisper_base_url,
+                status=JobStatus.PENDING,
+                created_at=datetime.now()
+            )
+
+            self._jobs[job.id] = job
+
+            # Start processing in background (CLI mode)
+            asyncio.create_task(self._process_local_file_workflow(job))
+        else:
+            # Worker mode - process synchronously
+            await self._process_local_file_workflow(job)
+
         return job
     
     async def get_job_status(self, job_id: str) -> JobStatus:
@@ -150,7 +162,7 @@ class WorkflowServiceImpl(WorkflowService):
             actual_output_dir = await self.file_service.create_output_directory(
                 Path(job.output_directory), video_title
             )
-            job.actual_output_dir = actual_output_dir
+            job.actual_output_dir = str(actual_output_dir)
             
             # Step 3: Download audio
             logger.info(f"Downloading audio from {job.input_path}")
@@ -224,7 +236,7 @@ class WorkflowServiceImpl(WorkflowService):
             actual_output_dir = await self.file_service.create_output_directory(
                 Path(job.output_directory), audio_file.stem
             )
-            job.actual_output_dir = actual_output_dir
+            job.actual_output_dir = str(actual_output_dir)
             
             # Step 5: Process audio file
             await self._process_audio_file(job, audio_file, audio_file.stem)
@@ -282,14 +294,15 @@ class WorkflowServiceImpl(WorkflowService):
                 raise JobError("Transcription returned empty result")
             
             # Step 3: Save original transcription
+            output_dir = Path(job.actual_output_dir)
             await self.file_service.save_transcription(
-                transcription, job.actual_output_dir, base_name, job.subtitle_format
+                transcription, output_dir, base_name, job.subtitle_format
             )
             await self.file_service.save_timestamps(
-                transcription, job.actual_output_dir, base_name
+                transcription, output_dir, base_name
             )
             await self.file_service.save_metadata(
-                transcription.to_dict(), job.actual_output_dir, base_name
+                transcription.to_dict(), output_dir, base_name
             )
             
             # Step 4: Apply translation if enabled
@@ -307,15 +320,15 @@ class WorkflowServiceImpl(WorkflowService):
                 
                 # Convert translation result to transcription format for saving
                 translated_transcription = self._translation_to_transcription(translation_result, transcription)
-                
+
                 await self.file_service.save_transcription(
-                    translated_transcription, job.actual_output_dir, f"{base_name}{suffix}", job.subtitle_format
+                    translated_transcription, output_dir, f"{base_name}{suffix}", job.subtitle_format
                 )
                 await self.file_service.save_timestamps(
-                    translated_transcription, job.actual_output_dir, f"{base_name}{suffix}"
+                    translated_transcription, output_dir, f"{base_name}{suffix}"
                 )
                 await self.file_service.save_metadata(
-                    translation_result.to_dict(), job.actual_output_dir, f"{base_name}{suffix}"
+                    translation_result.to_dict(), output_dir, f"{base_name}{suffix}"
                 )
             
             # Step 5: Cleanup chunks if multiple were created

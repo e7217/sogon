@@ -25,6 +25,7 @@ from sogon.models.job import JobStatus
 from sogon.models.translation import SupportedLanguage
 from sogon.exceptions.base import SogonError
 from sogon.utils.logging import setup_logging, get_logger
+from sogon.utils.provider_factory import get_transcription_provider as get_provider
 
 logger = get_logger(__name__)
 
@@ -60,8 +61,8 @@ class ServiceContainer:
     @property
     def transcription_service(self) -> TranscriptionService:
         if self._transcription_service is None:
-            # Task 25: Pass provider to transcription service
-            provider = self.get_transcription_provider()
+            # Use shared provider factory
+            provider = get_provider(self.settings)
             self._transcription_service = TranscriptionServiceImpl(
                 max_workers=self.settings.max_workers,
                 provider=provider
@@ -115,43 +116,18 @@ class ServiceContainer:
         """
         Get transcription provider based on settings.
 
+        DEPRECATED: Use sogon.utils.provider_factory.get_transcription_provider() instead.
+        This method is maintained for backward compatibility.
+
         Returns:
             TranscriptionProvider instance or None for legacy API-based providers
 
         Raises:
             ProviderNotAvailableError: When provider dependencies missing
         """
-        provider_name = self.settings.transcription_provider
-
-        # Legacy API-based providers (OpenAI, Groq) - return None to use existing flow
-        if provider_name in ["openai", "groq"]:
-            return None
-
-        # Local model provider (FR-001: stable-whisper for improved subtitle accuracy)
-        if provider_name == "stable-whisper":
-            if self._transcription_provider is None:
-                # Lazy import to avoid circular dependency
-                from sogon.providers.local.stable_whisper_provider import StableWhisperProvider
-                from sogon.exceptions import ProviderNotAvailableError
-
-                # Create provider instance
-                local_config = self.settings.get_local_model_config()
-                provider = StableWhisperProvider(local_config)
-
-                # Check availability (FR-025, FR-026)
-                if not provider.is_available:
-                    deps = provider.get_required_dependencies()
-                    raise ProviderNotAvailableError(
-                        provider=provider_name,
-                        missing_dependencies=deps
-                    )
-
-                self._transcription_provider = provider
-
-            return self._transcription_provider
-
-        # Unknown provider
-        raise ValueError(f"Unknown transcription provider: {provider_name}")
+        if self._transcription_provider is None:
+            self._transcription_provider = get_provider(self.settings)
+        return self._transcription_provider
 
 
 async def process_input(

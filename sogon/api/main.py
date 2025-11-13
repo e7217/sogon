@@ -1,18 +1,25 @@
-"""FastAPI application for SOGON API server"""
+"""FastAPI application for SOGON API server with async job queue"""
 
 import logging
 import uuid
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
+from contextlib import asynccontextmanager
+import asyncio
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 from .config import config
+from .schemas.requests import CreateJobRequest
+from .schemas.responses import (
+    JobCreatedResponse, JobStatusResponse, JobListResponse,
+    ErrorResponse
+)
 from ..models.translation import SupportedLanguage
-from ..models.job import JobStatus
+from ..models.job import ProcessingJob, JobStatus, JobType
 from ..config import get_settings
 from ..services.interfaces import (
     AudioService, TranscriptionService,
@@ -21,54 +28,18 @@ from ..services.interfaces import (
 from ..services.audio_service import AudioServiceImpl
 from ..services.transcription_service import TranscriptionServiceImpl
 from ..services.workflow_service import WorkflowServiceImpl
-from ..repositories.interfaces import FileRepository
+from ..repositories.interfaces import FileRepository, JobRepository
 from ..repositories.file_repository import FileRepositoryImpl
-import asyncio
+from ..repositories.job_repository import FileBasedJobRepository
+from ..queue.factory import create_queue
+from ..queue.interface import JobQueue
+from ..workers.job_worker import JobWorker
+from ..utils.provider_factory import get_transcription_provider
+from ..utils.logging import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, config.log_level.upper()),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-)
+# Configure logging with unified format
+setup_logging(console_level=config.log_level)
 logger = logging.getLogger(__name__)
-
-# FastAPI app instance
-app = FastAPI(
-    title="SOGON API",
-    description="Subtitle generator API from media URLs or local audio files",
-    version="1.0.0",
-    debug=config.debug
-)
-
-
-# Request/Response Models
-class TranscribeRequest(BaseModel):
-    """Transcribe request model for URL input"""
-    url: HttpUrl
-    subtitle_format: str = "txt"
-    keep_audio: bool = False
-    enable_translation: bool = False
-    translation_target_language: Optional[str] = None
-    whisper_source_language: Optional[str] = None
-    whisper_model: Optional[str] = None
-    whisper_base_url: Optional[str] = None
-
-
-class TranscribeResponse(BaseModel):
-    """Transcribe response model"""
-    job_id: str
-    status: str
-    message: str
-
-
-class JobStatusResponse(BaseModel):
-    """Job status response model"""
-    job_id: str
-    status: str  # pending, processing, completed, failed
-    progress: Optional[int] = None
-    message: Optional[str] = None
-    result: Optional[dict] = None
-    error: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -77,10 +48,6 @@ class HealthResponse(BaseModel):
     timestamp: str
     version: str
     config: dict
-
-
-# In-memory job storage (in production, use Redis or database)
-jobs = {}
 
 
 class APIServiceContainer:
@@ -95,6 +62,10 @@ class APIServiceContainer:
         self._file_service: Optional[FileService] = None
         self._translation_service: Optional[TranslationService] = None
         self._workflow_service: Optional[WorkflowService] = None
+        self._job_repository: Optional[JobRepository] = None
+        self._queue: Optional[JobQueue] = None
+        self._worker: Optional[JobWorker] = None
+        self._worker_task: Optional[asyncio.Task] = None
 
     @property
     def file_repository(self) -> FileRepository:
@@ -113,9 +84,16 @@ class APIServiceContainer:
     @property
     def transcription_service(self) -> TranscriptionService:
         if self._transcription_service is None:
+            # Use unified provider pattern (matches CLI implementation)
+            provider = get_transcription_provider(self.settings)
+
+            # Log warning if using API-based provider without API key
+            if provider is None and not self.settings.effective_transcription_api_key:
+                logger.warning("Transcription API key not set. Transcription service may not work properly.")
+
             self._transcription_service = TranscriptionServiceImpl(
-                api_key=self.settings.openai_api_key,
-                max_workers=self.settings.max_workers
+                max_workers=self.settings.max_workers,
+                provider=provider
             )
         return self._transcription_service
 
@@ -143,50 +121,124 @@ class APIServiceContainer:
     @property
     def translation_service(self) -> TranslationService:
         if self._translation_service is None:
-            if not self.settings.openai_api_key:
-                raise ValueError("OpenAI API key is required for translation service. Set OPENAI_API_KEY environment variable.")
             from ..services.translation_service import TranslationServiceImpl
-            self._translation_service = TranslationServiceImpl(
-                api_key=self.settings.openai_api_key,
-                base_url=self.settings.openai_base_url,
-                model=self.settings.openai_model,
-                temperature=self.settings.openai_temperature,
-                max_concurrent_requests=self.settings.openai_max_concurrent_requests
-            )
+            # Use same pattern as CLI - let service load settings internally
+            self._translation_service = TranslationServiceImpl()
         return self._translation_service
 
     @property
     def workflow_service(self) -> WorkflowService:
         if self._workflow_service is None:
+            # Translation service is optional - only initialize if API key is set
+            translation_svc = self.translation_service  # Will return None if no API key
+
             self._workflow_service = WorkflowServiceImpl(
                 audio_service=self.audio_service,
                 transcription_service=self.transcription_service,
                 youtube_service=self.youtube_service,
                 file_service=self.file_service,
-                translation_service=self.translation_service
+                translation_service=translation_svc
             )
         return self._workflow_service
+
+    @property
+    def job_repository(self) -> JobRepository:
+        if self._job_repository is None:
+            self._job_repository = FileBasedJobRepository()
+        return self._job_repository
+
+    @property
+    def queue(self) -> JobQueue:
+        if self._queue is None:
+            self._queue = create_queue(backend="memory", max_size=150)
+        return self._queue
+
+    @property
+    def worker(self) -> JobWorker:
+        if self._worker is None:
+            self._worker = JobWorker(
+                queue=self.queue,
+                job_repository=self.job_repository,
+                workflow_service=self.workflow_service,
+                max_concurrent_jobs=6,
+                worker_id="worker-1"
+            )
+        return self._worker
+
+    async def start_worker(self):
+        """Start background worker"""
+        if self._worker_task is None:
+            logger.info("Starting background worker...")
+            self._worker_task = asyncio.create_task(self.worker.start())
+
+    async def stop_worker(self):
+        """Stop background worker"""
+        if self._worker_task is not None:
+            logger.info("Stopping background worker...")
+            await self.worker.stop()
+            try:
+                await asyncio.wait_for(self._worker_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("Worker shutdown timed out")
+            self._worker_task = None
 
 
 # Service container for dependency injection
 services = APIServiceContainer()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    logger.info("Starting SOGON API application...")
+    await services.start_worker()
+    logger.info("Background worker started")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down SOGON API application...")
+    await services.stop_worker()
+    logger.info("Background worker stopped")
+
+
+# FastAPI app instance
+app = FastAPI(
+    title="SOGON API",
+    description="Async subtitle generator API from media URLs or local audio files",
+    version="2.0.0",
+    debug=config.debug,
+    lifespan=lifespan
+)
+
+
+def get_base_url(request: Request) -> str:
+    """Extract base URL from request"""
+    return f"{request.url.scheme}://{request.url.netloc}"
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
     logger.info("Health check requested")
-    
+
     try:
+        # Get repository and worker stats
+        repo_stats = await services.job_repository.get_stats()
+        worker_stats = services.worker.get_stats()
+
         return HealthResponse(
             status="healthy",
             timestamp=datetime.now().isoformat(),
-            version="1.0.0",
+            version="2.0.0",
             config={
                 "host": config.host,
                 "port": config.port,
                 "debug": config.debug,
-                "base_output_dir": config.base_output_dir
+                "base_output_dir": config.base_output_dir,
+                "worker_status": worker_stats,
+                "repository_stats": repo_stats
             }
         )
     except Exception as e:
@@ -194,170 +246,143 @@ async def health_check():
         raise HTTPException(status_code=500, detail="Health check failed")
 
 
-def update_job_safely(job_id: str, updates: dict) -> bool:
-    """Safely update job status with race condition protection"""
-    if job_id in jobs:
-        try:
-            jobs[job_id].update(updates)
-            return True
-        except KeyError:
-            # Job was deleted between the check and update
-            logger.warning(f"Job {job_id} was deleted during update")
-            return False
-    else:
-        logger.warning(f"Job {job_id} not found during update")
-        return False
+@app.post(
+    "/api/v1/jobs",
+    response_model=JobCreatedResponse,
+    status_code=202,
+    responses={
+        202: {"description": "Job created and queued"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        503: {"model": ErrorResponse, "description": "Queue full"}
+    }
+)
+async def create_job(request: Request, job_request: CreateJobRequest):
+    """
+    Create transcription job (unified endpoint for URL and file upload).
 
-
-async def process_transcription_task(
-    job_id: str,
-    input_path: str,
-    subtitle_format: str,
-    keep_audio: bool = False,
-    enable_translation: bool = False,
-    translation_target_language: Optional[str] = None,
-    whisper_source_language: Optional[str] = None,
-    whisper_model: Optional[str] = None,
-    whisper_base_url: Optional[str] = None
-):
-    """Background task for processing transcription"""
+    Returns 202 Accepted with job_id for status polling.
+    """
     try:
-        logger.info(f"Starting transcription job {job_id}")
-        
-        # Safely update job status to processing
-        if not update_job_safely(job_id, {"status": "processing", "progress": 0}):
-            logger.info(f"Job {job_id} was cancelled before processing started")
-            return
-        
-        # Process the transcription using workflow service directly
-        base_output_dir = Path(config.base_output_dir)
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+
+        # Determine job type and input
+        if job_request.url:
+            job_type = JobType.YOUTUBE_URL
+            input_path = str(job_request.url)
+        else:
+            return JSONResponse(
+                status_code=400,
+                content=ErrorResponse(
+                    error="invalid_input",
+                    detail="Either 'url' must be provided or file must be uploaded"
+                ).model_dump()
+            )
+
+        # Validate whisper_model if provided
+        if job_request.whisper_model and not job_request.whisper_model.startswith("whisper"):
+            return JSONResponse(
+                status_code=400,
+                content=ErrorResponse(
+                    error="invalid_model",
+                    detail=f"Invalid Whisper model: {job_request.whisper_model}. Must be a Whisper model (e.g., whisper-large-v3-turbo)"
+                ).model_dump()
+            )
 
         # Parse translation target language
         target_lang = None
-        if enable_translation and translation_target_language:
+        if job_request.enable_translation and job_request.translation_target_language:
             try:
-                target_lang = SupportedLanguage(translation_target_language)
+                target_lang = SupportedLanguage(job_request.translation_target_language)
             except ValueError:
-                raise Exception(f"Unsupported translation language: {translation_target_language}")
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        error="invalid_language",
+                        detail=f"Unsupported translation language: {job_request.translation_target_language}"
+                    ).model_dump()
+                )
 
-        # Check if input is URL or local file
-        if services.youtube_service.is_valid_url(input_path):
-            job = await services.workflow_service.process_youtube_url(
-                url=input_path,
-                output_dir=base_output_dir,
-                format=subtitle_format,
-                keep_audio=keep_audio,
-                enable_translation=enable_translation,
-                translation_target_language=target_lang,
-                whisper_source_language=whisper_source_language,
-                whisper_model=whisper_model,
-                whisper_base_url=whisper_base_url
+        # Create job
+        job = ProcessingJob(
+            id=job_id,
+            job_type=job_type,
+            input_path=input_path,
+            output_directory=config.base_output_dir,
+            subtitle_format=job_request.subtitle_format,
+            keep_audio=job_request.keep_audio,
+            enable_translation=job_request.enable_translation,
+            translation_target_language=target_lang,
+            whisper_source_language=job_request.whisper_source_language,
+            whisper_model=job_request.whisper_model,
+            whisper_base_url=str(job_request.whisper_base_url) if job_request.whisper_base_url else None
+        )
+
+        # Save to repository
+        saved = await services.job_repository.save_job(job)
+        if not saved:
+            return JSONResponse(
+                status_code=500,
+                content=ErrorResponse(
+                    error="save_failed",
+                    detail="Failed to save job to repository"
+                ).model_dump()
             )
-        else:
-            # Local file processing
-            file_path = Path(input_path)
-            if not file_path.exists():
-                raise Exception(f"File not found: {file_path}")
 
-            job = await services.workflow_service.process_local_file(
-                file_path=file_path,
-                output_dir=base_output_dir,
-                format=subtitle_format,
-                keep_audio=keep_audio,
-                enable_translation=enable_translation,
-                translation_target_language=target_lang,
-                whisper_source_language=whisper_source_language,
-                whisper_model=whisper_model,
-                whisper_base_url=whisper_base_url
+        # Enqueue job
+        job.mark_enqueued()
+        enqueued = await services.queue.enqueue(job_id)
+        if not enqueued:
+            # Queue is full
+            await services.job_repository.delete_job(job_id)
+            return JSONResponse(
+                status_code=503,
+                content=ErrorResponse(
+                    error="queue_full",
+                    detail="Job queue is at capacity. Please try again later."
+                ).model_dump()
             )
 
-        # Wait for job completion (with timeout)
-        max_wait_seconds = services.settings.max_processing_timeout_seconds
-        wait_seconds = 0
+        # Save enqueued timestamp
+        await services.job_repository.save_job(job)
 
-        while wait_seconds < max_wait_seconds:
-            status = await services.workflow_service.get_job_status(job.id)
+        logger.info(f"Created and enqueued job {job_id} for {job_type.value}: {input_path}")
 
-            if status == JobStatus.COMPLETED:
-                break
-            elif status == JobStatus.FAILED:
-                raise Exception(f"Processing failed: {job.error_message}")
-            elif status == JobStatus.NOT_FOUND:
-                raise Exception("Job not found")
+        # Return 202 Accepted with HATEOAS links
+        base_url = get_base_url(request)
+        response = JobCreatedResponse.from_job(
+            job_id=job_id,
+            base_url=base_url,
+            created_at=job.created_at
+        )
+        return JSONResponse(
+            status_code=202,
+            content=response.model_dump(mode='json')
+        )
 
-            # Wait and check again
-            await asyncio.sleep(2)
-            wait_seconds += 2
-
-        if wait_seconds >= max_wait_seconds:
-            raise Exception("Processing timed out")
-        
-        # Safely update job completion status
-        if not update_job_safely(job_id, {
-            "progress": 100,
-            "status": "completed",
-            "result": {
-                "message": "Transcription completed successfully",
-                "output_directory": str(job.actual_output_dir) if job.actual_output_dir else str(base_output_dir),
-                "job_details": {
-                    "format": subtitle_format,
-                    "translation_enabled": enable_translation,
-                    "whisper_model": whisper_model,
-                    "whisper_base_url": whisper_base_url
-                }
-            }
-        }):
-            logger.info(f"Job {job_id} was cancelled during processing")
-            return
-            
-        logger.info(f"Transcription job {job_id} completed successfully")
-        
     except Exception as e:
-        logger.error(f"Transcription job {job_id} failed: {e}")
-        # Safely update job failure status
-        update_job_safely(job_id, {"status": "failed", "error": str(e)})
+        logger.error(f"Failed to create job: {e}")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error="internal_error",
+                detail=str(e)
+            ).model_dump(mode='json')
+        )
 
 
-@app.post("/api/v1/transcribe/url", response_model=TranscribeResponse)
-async def transcribe_url(request: TranscribeRequest, background_tasks: BackgroundTasks):
-    """Submit URL for transcription"""
-    job_id = str(uuid.uuid4())
-
-    # Initialize job
-    jobs[job_id] = {
-        "status": "pending",
-        "created_at": datetime.now().isoformat(),
-        "progress": 0,
-        "input_type": "url",
-        "input_value": str(request.url)
+@app.post(
+    "/api/v1/jobs/upload",
+    response_model=JobCreatedResponse,
+    status_code=202,
+    responses={
+        202: {"description": "Job created and queued"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        503: {"model": ErrorResponse, "description": "Queue full"}
     }
-
-    # Add background task
-    background_tasks.add_task(
-        process_transcription_task,
-        job_id,
-        str(request.url),
-        request.subtitle_format,
-        request.keep_audio,
-        request.enable_translation,
-        request.translation_target_language,
-        request.whisper_source_language,
-        request.whisper_model,
-        request.whisper_base_url
-    )
-    
-    logger.info(f"Created transcription job {job_id} for URL: {request.url}")
-    
-    return TranscribeResponse(
-        job_id=job_id,
-        status="pending",
-        message="Transcription job created successfully"
-    )
-
-
-@app.post("/api/v1/transcribe/upload", response_model=TranscribeResponse)
-async def transcribe_upload(
-    background_tasks: BackgroundTasks,
+)
+async def create_job_upload(
+    request: Request,
     file: UploadFile = File(...),
     subtitle_format: str = Form("txt"),
     keep_audio: bool = Form(False),
@@ -367,126 +392,351 @@ async def transcribe_upload(
     whisper_model: Optional[str] = Form(None),
     whisper_base_url: Optional[str] = Form(None)
 ):
-    """Upload file for transcription"""
-    job_id = str(uuid.uuid4())
+    """
+    Upload file for transcription.
 
-    # Save uploaded file
-    upload_dir = Path(config.base_output_dir) / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    
-    file_path = upload_dir / f"{job_id}_{file.filename}"
-    
+    Returns 202 Accepted with job_id for status polling.
+    """
     try:
+
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+
+        # Save uploaded file
+        upload_dir = Path(config.base_output_dir) / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        file_path = upload_dir / f"{job_id}_{file.filename}"
+
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
-        
-        # Initialize job
-        jobs[job_id] = {
-            "status": "pending",
-            "created_at": datetime.now().isoformat(),
-            "progress": 0,
-            "input_type": "file",
-            "input_value": str(file_path),
-            "original_filename": file.filename
-        }
-        
-        # Add background task
-        background_tasks.add_task(
-            process_transcription_task,
-            job_id,
-            str(file_path),
-            subtitle_format,
-            keep_audio,
-            enable_translation,
-            translation_target_language,
-            whisper_source_language,
-            whisper_model,
-            whisper_base_url
+
+        # Parse translation target language
+        target_lang = None
+        if enable_translation and translation_target_language:
+            try:
+                target_lang = SupportedLanguage(translation_target_language)
+            except ValueError:
+                file_path.unlink()  # Clean up uploaded file
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        error="invalid_language",
+                        detail=f"Unsupported translation language: {translation_target_language}"
+                    ).model_dump()
+                )
+
+        # Create job
+        job = ProcessingJob(
+            id=job_id,
+            job_type=JobType.LOCAL_FILE,
+            input_path=str(file_path),
+            output_directory=config.base_output_dir,
+            subtitle_format=subtitle_format,
+            keep_audio=keep_audio,
+            enable_translation=enable_translation,
+            translation_target_language=target_lang,
+            whisper_source_language=whisper_source_language,
+            whisper_model=whisper_model,
+            whisper_base_url=whisper_base_url
         )
-        
-        logger.info(f"Created transcription job {job_id} for uploaded file: {file.filename}")
-        
-        return TranscribeResponse(
+
+        # Save to repository
+        saved = await services.job_repository.save_job(job)
+        if not saved:
+            file_path.unlink()  # Clean up uploaded file
+            return JSONResponse(
+                status_code=500,
+                content=ErrorResponse(
+                    error="save_failed",
+                    detail="Failed to save job to repository"
+                ).model_dump()
+            )
+
+        # Enqueue job
+        job.mark_enqueued()
+        enqueued = await services.queue.enqueue(job_id)
+        if not enqueued:
+            # Queue is full
+            await services.job_repository.delete_job(job_id)
+            file_path.unlink()  # Clean up uploaded file
+            return JSONResponse(
+                status_code=503,
+                content=ErrorResponse(
+                    error="queue_full",
+                    detail="Job queue is at capacity. Please try again later."
+                ).model_dump()
+            )
+
+        # Save enqueued timestamp
+        await services.job_repository.save_job(job)
+
+        logger.info(f"Created and enqueued job {job_id} for uploaded file: {file.filename}")
+
+        # Return 202 Accepted with HATEOAS links
+        base_url = get_base_url(request)
+        response = JobCreatedResponse.from_job(
             job_id=job_id,
-            status="pending",
-            message="File uploaded and transcription job created successfully"
+            base_url=base_url,
+            created_at=job.created_at
         )
-        
+        return JSONResponse(
+            status_code=202,
+            content=response.model_dump(mode='json')
+        )
+
     except Exception as e:
-        logger.error(f"Failed to save uploaded file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+        logger.error(f"Failed to create upload job: {e}")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error="internal_error",
+                detail=str(e)
+            ).model_dump(mode='json')
+        )
 
 
-@app.get("/api/v1/jobs/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
-    """Get job status and progress"""
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
-    
+@app.get(
+    "/api/v1/jobs/{job_id}",
+    response_model=JobStatusResponse,
+    responses={
+        200: {"description": "Job status"},
+        404: {"model": ErrorResponse, "description": "Job not found"}
+    }
+)
+async def get_job_status(request: Request, job_id: str):
+    """Get job status and progress (polling endpoint)"""
+    job = await services.job_repository.get_job(job_id)
+
+    if not job:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error="job_not_found",
+                detail=f"Job with ID {job_id} not found",
+                job_id=job_id
+            ).model_dump(mode='json')
+        )
+
+    # Build progress info
+    progress_info = None
+    if job.progress is not None:
+        progress_info = {
+            "percentage": job.progress,
+            "current_step": job.status.value,
+            "message": job.current_step_description
+        }
+
+    # Build result info (only for completed jobs)
+    result_info = None
+    if job.status == JobStatus.COMPLETED and job.original_files:
+        result_info = {
+            "output_directory": job.actual_output_dir or job.output_directory,
+            "files": [],
+            "translation_performed": job.enable_translation,
+            "processing_duration_seconds": job.duration
+        }
+
+        # Add original files
+        for file_path in job.original_files.values():
+            if Path(file_path).exists():
+                result_info["files"].append({
+                    "type": "subtitle",
+                    "format": job.subtitle_format,
+                    "size_bytes": Path(file_path).stat().st_size
+                })
+
+    # Build HATEOAS links
+    base_url = get_base_url(request)
+    links = {
+        "self": f"{base_url}/api/v1/jobs/{job_id}"
+    }
+
+    if job.status == JobStatus.COMPLETED:
+        links["result"] = f"{base_url}/api/v1/jobs/{job_id}/result"
+        links["download"] = f"{base_url}/api/v1/jobs/{job_id}/download"
+    elif not job.status.is_terminal:
+        links["cancel"] = f"{base_url}/api/v1/jobs/{job_id}"
+
     return JobStatusResponse(
         job_id=job_id,
-        status=job["status"],
-        progress=job.get("progress"),
-        message=job.get("message"),
-        result=job.get("result"),
-        error=job.get("error")
+        status=job.status.value,
+        progress=progress_info,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        result=result_info,
+        error=job.error_message,
+        links=links
     )
+
+
+@app.get(
+    "/api/v1/jobs",
+    response_model=JobListResponse,
+    responses={
+        200: {"description": "Job list"}
+    }
+)
+async def list_jobs(
+    request: Request,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """List jobs with filtering and pagination"""
+    # Parse status filter
+    status_filter = None
+    if status:
+        try:
+            status_filter = JobStatus(status)
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content=ErrorResponse(
+                    error="invalid_status",
+                    detail=f"Invalid status value: {status}"
+                ).model_dump()
+            )
+
+    # Get jobs from repository
+    jobs = await services.job_repository.list_jobs(
+        status=status_filter,
+        limit=limit,
+        offset=offset
+    )
+
+    # Convert to response format
+    base_url = get_base_url(request)
+    job_responses = []
+
+    for job in jobs:
+        # Build progress info
+        progress_info = None
+        if job.progress is not None:
+            progress_info = {
+                "percentage": job.progress,
+                "current_step": job.status.value,
+                "message": job.current_step_description
+            }
+
+        # Build links
+        links = {"self": f"{base_url}/api/v1/jobs/{job.id}"}
+
+        job_responses.append(
+            JobStatusResponse(
+                job_id=job.id,
+                status=job.status.value,
+                progress=progress_info,
+                created_at=job.created_at,
+                started_at=job.started_at,
+                completed_at=job.completed_at,
+                result=None,  # Don't include full result in list
+                error=job.error_message if job.status == JobStatus.FAILED else None,
+                links=links
+            )
+        )
+
+    # Build pagination links
+    links = {
+        "self": f"{base_url}/api/v1/jobs?limit={limit}&offset={offset}"
+    }
+
+    if status:
+        links["self"] += f"&status={status}"
+
+    if offset + limit < len(job_responses):
+        next_offset = offset + limit
+        links["next"] = f"{base_url}/api/v1/jobs?limit={limit}&offset={next_offset}"
+        if status:
+            links["next"] += f"&status={status}"
+
+    return JobListResponse(
+        jobs=job_responses,
+        total=len(job_responses),
+        limit=limit,
+        offset=offset,
+        links=links
+    )
+
+
+@app.delete(
+    "/api/v1/jobs/{job_id}",
+    responses={
+        200: {"description": "Job cancelled/deleted"},
+        404: {"model": ErrorResponse, "description": "Job not found"}
+    }
+)
+async def delete_job(job_id: str):
+    """Cancel/delete job"""
+    job = await services.job_repository.get_job(job_id)
+
+    if not job:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error="job_not_found",
+                detail=f"Job with ID {job_id} not found",
+                job_id=job_id
+            ).model_dump(mode='json')
+        )
+
+    # Mark as cancelled if not terminal
+    if not job.status.is_terminal:
+        job.cancel()
+        await services.job_repository.save_job(job)
+
+        # Try to cancel from queue
+        await services.queue.cancel(job_id)
+
+        logger.info(f"Cancelled job {job_id}")
+        return {"message": "Job cancelled successfully"}
+    else:
+        # Delete terminal job
+        await services.job_repository.delete_job(job_id)
+
+        # Clean up uploaded file if exists
+        if job.job_type == JobType.LOCAL_FILE:
+            try:
+                file_path = Path(job.input_path)
+                if file_path.exists() and "uploads" in str(file_path):
+                    file_path.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete uploaded file: {e}")
+
+        logger.info(f"Deleted job {job_id}")
+        return {"message": "Job deleted successfully"}
 
 
 @app.get("/api/v1/jobs/{job_id}/download")
 async def download_result(job_id: str, file_type: str = "original"):
     """Download transcription result files"""
-    if job_id not in jobs:
+    job = await services.job_repository.get_job(job_id)
+
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
-    
-    if job["status"] != "completed":
+
+    if job.status != JobStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job not completed yet")
-    
-    result = job.get("result")
-    if not result:
-        raise HTTPException(status_code=404, detail="No result available")
-    
-    if file_type == "original" and result.get("original_files"):
-        file_path = result["original_files"][0]  # subtitle file
-    elif file_type == "translated" and result.get("translated_files"):
-        file_path = result["translated_files"][0]  # translated subtitle file
-    else:
-        raise HTTPException(status_code=404, detail="Requested file type not available")
-    
-    if not Path(file_path).exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    
+
+    # Get file path
+    file_path = None
+    if file_type == "original" and job.original_files:
+        # Get subtitle file
+        file_path = job.original_files.get("subtitle") or job.original_files.get("transcript")
+    elif file_type == "translated" and job.translated_files:
+        # Get translated subtitle file
+        file_path = job.translated_files[0] if job.translated_files else None
+
+    if not file_path or not Path(file_path).exists():
+        raise HTTPException(status_code=404, detail="Requested file not available")
+
     return FileResponse(
         path=file_path,
         filename=Path(file_path).name,
         media_type="text/plain"
     )
-
-
-@app.delete("/api/v1/jobs/{job_id}")
-async def delete_job(job_id: str):
-    """Delete/cancel job"""
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    # Clean up files if needed
-    job = jobs[job_id]
-    if job.get("input_type") == "file":
-        try:
-            file_path = Path(job["input_value"])
-            if file_path.exists():
-                file_path.unlink()
-        except Exception as e:
-            logger.warning(f"Failed to delete uploaded file: {e}")
-    
-    del jobs[job_id]
-    
-    return {"message": "Job deleted successfully"}
 
 
 @app.get("/api/v1/languages")
@@ -504,7 +754,11 @@ async def get_supported_languages():
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "SOGON API Server", "docs": "/docs"}
+    return {
+        "message": "SOGON API Server (Async)",
+        "version": "2.0.0",
+        "docs": "/docs"
+    }
 
 
 # Error handlers
