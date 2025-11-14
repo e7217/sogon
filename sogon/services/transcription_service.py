@@ -20,19 +20,39 @@ logger = logging.getLogger(__name__)
 class TranscriptionServiceImpl(TranscriptionService):
     """Implementation of TranscriptionService interface"""
 
-    def __init__(self, api_key: str = None, max_workers: int = 4, provider=None):
+    def __init__(self, max_workers: int = 4, provider=None):
+        """
+        Initialize transcription service.
+
+        Args:
+            max_workers: Maximum number of concurrent transcription workers
+            provider: TranscriptionProvider instance, or None for API-based providers
+        """
         self.settings = get_settings()
-        self.api_key = api_key or self.settings.effective_transcription_api_key
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.provider = provider  # Task 25: Provider pattern integration
+        self.provider = provider
+
+        # API key for legacy API-based providers (when provider is None)
+        self.api_key = self.settings.effective_transcription_api_key
     
     async def transcribe_audio(self, audio_file: AudioFile, source_language: str = None, model: str = None, base_url: str = None) -> TranscriptionResult:
-        """Transcribe single audio file"""
+        """
+        Transcribe single audio file.
+
+        Args:
+            audio_file: Audio file to transcribe
+            source_language: Source language hint for transcription
+            model: Model name override (API-based providers only)
+            base_url: Base URL override (API-based providers only)
+
+        Returns:
+            TranscriptionResult containing text and metadata
+        """
         try:
             logger.info(f"Starting transcription for {audio_file.name}")
 
-            # Task 25: Use provider pattern if available (FR-001, FR-011)
+            # Provider-based transcription (e.g., stable-whisper)
             if self.provider:
                 logger.info(f"Using provider: {self.provider.provider_name}")
 

@@ -159,8 +159,8 @@ class Settings(BaseSettings):
 
     # Local Model Configuration (FR-018: environment variable support)
     local_model_name: str = Field("base", env="SOGON_LOCAL_MODEL_NAME")
-    local_device: str = Field("cpu", env="SOGON_LOCAL_DEVICE")
-    local_compute_type: str = Field("int8", env="SOGON_LOCAL_COMPUTE_TYPE")
+    local_device: str = Field("cuda", env="SOGON_LOCAL_DEVICE")  # Default to CUDA for API performance
+    local_compute_type: str = Field("float16", env="SOGON_LOCAL_COMPUTE_TYPE")  # CUDA optimized
     local_beam_size: int = Field(5, env="SOGON_LOCAL_BEAM_SIZE")
     local_language: str | None = Field(None, env="SOGON_LOCAL_LANGUAGE")
     local_temperature: float = Field(0.0, env="SOGON_LOCAL_TEMPERATURE")

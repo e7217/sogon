@@ -173,7 +173,8 @@ class WorkflowService(ABC):
         translation_target_language: Optional[SupportedLanguage] = None,
         whisper_source_language: Optional[str] = None,
         whisper_model: Optional[str] = None,
-        whisper_base_url: Optional[str] = None
+        whisper_base_url: Optional[str] = None,
+        job: Optional[ProcessingJob] = None
     ) -> ProcessingJob:
         """Complete workflow for YouTube URL processing"""
         pass
@@ -189,7 +190,8 @@ class WorkflowService(ABC):
         translation_target_language: Optional[SupportedLanguage] = None,
         whisper_source_language: Optional[str] = None,
         whisper_model: Optional[str] = None,
-        whisper_base_url: Optional[str] = None
+        whisper_base_url: Optional[str] = None,
+        job: Optional[ProcessingJob] = None
     ) -> ProcessingJob:
         """Complete workflow for local file processing"""
         pass

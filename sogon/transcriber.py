@@ -197,7 +197,16 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
                             transcription_params["language"] = source_language
                             
                         response = client.audio.transcriptions.create(**transcription_params)
-                    logger.debug(f"Chunk {i+1} Whisper transcription successful")
+
+                    # Log response details for debugging
+                    logger.debug(f"Chunk {i+1} Whisper API call successful")
+                    logger.debug(f"Chunk {i+1} response type: {type(response)}")
+                    logger.debug(f"Chunk {i+1} response.text type: {type(getattr(response, 'text', None))}, value: {getattr(response, 'text', 'N/A')[:100] if getattr(response, 'text', None) else 'None'}")
+
+                    if hasattr(response, 'model_dump'):
+                        logger.debug(f"Chunk {i+1} full response dict: {response.model_dump()}")
+                    elif hasattr(response, '__dict__'):
+                        logger.debug(f"Chunk {i+1} response attributes: {response.__dict__}")
                 except Exception as api_error:
                     logger.error(f"Chunk {i+1} Whisper transcription failed: {api_error}, cause: {api_error.__cause__ or 'unknown'}")
                     logger.debug(f"Chunk {i+1} API error details: {type(api_error).__name__}: {str(api_error)}")
@@ -205,9 +214,17 @@ def transcribe_audio(audio_file_path, api_key=None, source_language=None, model=
 
                 # Separate text and metadata
                 transcription_text = response.text
+
+                # Validate transcription_text
+                if transcription_text is None:
+                    logger.error(f"Chunk {i + 1} response.text is None - API returned empty transcription")
+                    logger.debug(f"Chunk {i + 1} full response: {response}")
+                    logger.debug(f"Chunk {i + 1} response dict: {response.model_dump() if hasattr(response, 'model_dump') else 'N/A'}")
+                    continue
+
                 logger.info(f"Chunk {i + 1} transcription result: {len(transcription_text)} characters")
                 logger.info(f"Chunk {i + 1} preview: {transcription_text[:100]}...")
-                
+
                 if not transcription_text.strip():
                     logger.warning(f"Chunk {i + 1} transcription result is empty")
                 

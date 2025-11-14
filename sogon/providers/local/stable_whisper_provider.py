@@ -170,6 +170,10 @@ class StableWhisperProvider(TranscriptionProvider):
             DeviceNotAvailableError: Device unavailable
         """
         async with self._semaphore:  # Limit concurrent jobs (FR-022)
+            
+            # TODO: Need to replace input model
+            self.config.model_name = "large-v3-turbo"
+            
             logger.info(
                 f"Starting transcription: {audio_file.path}, "
                 f"model={self.config.model_name}, device={self.config.device}"
@@ -178,6 +182,7 @@ class StableWhisperProvider(TranscriptionProvider):
             # Validate resources before loading model (FR-021)
             required_ram_gb = self.config.get_min_ram_gb()
             required_vram_gb = self.config.get_min_vram_gb()
+
 
             self._resource_monitor.validate_resources_for_model(
                 model_name=self.config.model_name,
