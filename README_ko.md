@@ -8,8 +8,7 @@
 - **AI 음성인식**: 고급 AI 모델을 사용한 정확한 한국어 음성인식
 - **대용량 파일 처리**: 24MB 제한 자동 우회 (파일 분할)
 - **정밀한 타임스탬프**: HH:mm:ss.SSS 형식의 세그먼트별 시간 정보
-- **지능형 텍스트 보정**: 패턴 기반 + AI 기반 이중 보정
-- **체계적인 출력**: 원본/보정본 분리 저장
+- **체계적인 출력**: 메타데이터와 함께 정리된 결과 저장
 
 ## 설치
 
@@ -56,7 +55,7 @@ uv sync
 
 ```bash
 GROQ_API_KEY=your_groq_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here  # 선택사항: AI 텍스트 보정용
+OPENAI_API_KEY=your_openai_api_key_here  # 선택사항: 번역용
 ```
 
 ### 2. 기본 사용법
@@ -69,21 +68,72 @@ sogon run "https://www.youtube.com/watch?v=VIDEO_ID"
 sogon run "/path/to/video/file.mp4"
 ```
 
+## 설정
+
+기본 동작을 영구적으로 설정할 수 있습니다:
+
+```bash
+# 모든 설정 조회
+sogon config get
+
+# 기본 출력 형식 설정
+sogon config set default_subtitle_format srt
+
+# 기본 출력 디렉토리 설정
+sogon config set output_base_dir ~/subtitles
+
+# 번역 기본 활성화
+sogon config set enable_translation true
+
+# 상세 옵션 및 범위 조회
+sogon config get -v
+
+# 기본값으로 초기화
+sogon config reset
+```
+
+설정은 `~/.sogon/config.yaml`에 저장됩니다.
+
+### 설정 가능한 항목
+
+| 키 | 설명 | 기본값 |
+|----|------|--------|
+| `output_base_dir` | 출력 디렉토리 | ./result |
+| `default_subtitle_format` | 자막 형식 (txt/srt/vtt/json) | txt |
+| `transcription_provider` | 제공자 (groq/openai/stable-whisper) | groq |
+| `enable_translation` | 기본 번역 활성화 | false |
+| `default_translation_language` | 번역 대상 언어 | ko |
+| `default_source_language` | 소스 언어 | auto |
+| `log_level` | 로깅 레벨 | INFO |
+| `keep_temp_files` | 임시 파일 보관 | false |
+| `max_workers` | 동시 작업자 수 (1-16) | 4 |
+| `max_chunk_size_mb` | 오디오 청크 크기 (1-100) | 24 |
+
+**로컬 모델 설정:**
+
+| 키 | 설명 | 기본값 |
+|----|------|--------|
+| `local_model_name` | 모델 (tiny~large-v3-turbo) | base |
+| `local_device` | 장치 (cpu/cuda/mps) | cuda |
+| `local_compute_type` | 정밀도 (int8~float32) | float16 |
+| `local_beam_size` | 빔 크기 (1-10) | 5 |
+| `local_temperature` | 온도 (0.0-1.0) | 0.0 |
+| `local_vad_filter` | VAD 필터 | false |
+
 ## 시스템 아키텍처
 
 ```
-동영상 URL/파일 → 오디오 추출 → 음성인식 → 텍스트 보정 → 파일 저장
-      ↓             ↓            ↓          ↓          ↓
-  다운로더       오디오툴     AI음성모델    AI보정    result/
+동영상 URL/파일 → 오디오 추출 → 음성인식 → 파일 저장
+      ↓             ↓            ↓         ↓
+  다운로더       오디오툴     AI음성모델   result/
 ```
 
 ## 처리 단계
 
 1. **오디오 추출**: 미디어 처리 도구로 동영상 URL/파일에서 오디오 추출
 2. **파일 처리**: API 제한에 맞춰 대용량 파일 분할
-3. **음성인식**: 고급 AI 모델로 한국어 텍스트 처리
-4. **텍스트 보정**: 패턴 기반 및 AI 기반 보정 적용
-5. **출력 생성**: 원본/보정본 타임스탬프와 함께 저장
+3. **음성인식**: 고급 AI 모델로 텍스트 처리
+4. **출력 생성**: 타임스탬프와 함께 결과 저장
 
 ## 출력 파일 구조
 
@@ -91,17 +141,14 @@ sogon run "/path/to/video/file.mp4"
 ```
 result/
 └── yyyyMMDD_HHmmss_비디오제목/          # 각 비디오별 타임스탬프 폴더
-    ├── 비디오제목.txt                  # 원본 연속 텍스트
-    ├── 비디오제목_metadata.json        # 원본 메타데이터
-    ├── 비디오제목_timestamps.txt       # 원본 타임스탬프
-    ├── 비디오제목_corrected.txt        # 보정된 텍스트
-    ├── 비디오제목_corrected_metadata.json # 보정된 메타데이터
-    └── 비디오제목_corrected_timestamps.txt # 보정된 타임스탬프
+    ├── 비디오제목.txt                  # 연속 텍스트
+    ├── 비디오제목_metadata.json        # 세그먼트 메타데이터
+    └── 비디오제목_timestamps.txt       # 타임스탬프별 텍스트
 ```
 
 ### 타임스탬프 파일 형식
 ```
-타임스탬프별 자막 (보정됨)
+타임스탬프별 자막
 ==================================================
 
 [00:00:00.560 → 00:00:03.520] 안녕하세요. 사실 비주얼 스토리 이어 쓰기 시리즈를 계속 하려고 하는데,
@@ -116,26 +163,19 @@ result/
 | **오디오 추출** | 미디어 다운로더 + 오디오 처리기 | 동영상 URL/파일 → 오디오 변환 |
 | **오디오 처리** | 오디오 라이브러리 | 파일 분할, 포맷 변환 |
 | **음성인식** | AI 음성 모델 | 음성 → 텍스트 + 메타데이터 |
-| **AI 보정** | 대규모 언어 모델 | 텍스트 교정 |
-| **환경관리** | 설정 관리자 | API 키 관리 |
+| **번역** | 대규모 언어 모델 | 자막 번역 |
+| **환경관리** | 설정 관리자 | API 키 및 설정 관리 |
 
 ## 출력 파일
 
-도구는 원본과 보정본 버전의 타임스탬프와 메타데이터를 포함한 체계적인 출력 파일을 생성합니다.
+도구는 타임스탬프와 메타데이터를 포함한 체계적인 출력 파일을 생성합니다.
 
-## 고급 기능
-
-### 기존 파일 보정
-도구는 기존 음성 변환 파일을 AI 기반으로 개선하는 기능을 제공합니다.
-
-### CLI 옵션
+## CLI 옵션
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
 | `--format`, `-f` | 출력 자막 형식 (txt, srt, vtt, json) | txt |
 | `--output-dir`, `-o` | 사용자 정의 출력 디렉토리 | ./result |
-| `--no-correction` | 텍스트 보정 비활성화 | False |
-| `--no-ai-correction` | AI 기반 텍스트 보정 비활성화 | False |
 | `--keep-audio` | 다운로드한 오디오 파일 보관 | False |
 | `--translate` | 자막 번역 활성화 | False |
 | `--target-language`, `-t` | 번역 대상 언어 | None |
@@ -163,9 +203,6 @@ sogon run "/path/to/video/file.mp4"
 ```bash
 # 출력 형식 지정
 sogon run "video.mp4" --format srt
-
-# 텍스트 보정 비활성화
-sogon run "video.mp4" --no-correction
 
 # 사용자 정의 출력 디렉토리 설정
 sogon run "video.mp4" --output-dir ./my-results

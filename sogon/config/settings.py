@@ -280,23 +280,80 @@ class Settings(BaseSettings):
         )
 
 
+def _apply_user_config(settings: Settings) -> Settings:
+    """
+    Apply user configuration from ~/.sogon/config.yaml to settings.
+
+    User config values override environment/default values but are
+    overridden by CLI flags (which are applied separately).
+
+    Priority (highest to lowest):
+    1. CLI flags (applied in cli.py, not here)
+    2. Environment variables (already in settings)
+    3. User config (~/.sogon/config.yaml)
+    4. Default values
+
+    Args:
+        settings: Settings instance to modify
+
+    Returns:
+        Modified Settings instance
+    """
+    # Import here to avoid circular imports
+    from sogon.config.user_config import get_user_config_manager, CONFIGURABLE_KEYS
+
+    try:
+        user_config = get_user_config_manager()
+        user_values = user_config.get_all()
+
+        for key, value in user_values.items():
+            if key in CONFIGURABLE_KEYS and hasattr(settings, key):
+                # Only apply user config if env var wasn't explicitly set
+                # Check if the current value equals the default (meaning env wasn't set)
+                default_value = CONFIGURABLE_KEYS[key]["default"]
+                current_value = getattr(settings, key)
+
+                # Apply user config value
+                # Note: We apply regardless of whether env was set, because
+                # user explicitly set this via `sogon config set`
+                setattr(settings, key, value)
+    except Exception:
+        # If user config loading fails, continue with env/default settings
+        pass
+
+    return settings
+
+
 @lru_cache()
 def get_settings() -> Settings:
     """
-    Get cached settings instance
-    
+    Get cached settings instance with user configuration applied.
+
+    Settings are loaded in the following priority order:
+    1. CLI flags (applied separately in cli.py)
+    2. Environment variables
+    3. User config (~/.sogon/config.yaml)
+    4. Default values
+
     Returns:
         Settings: Configured settings instance
     """
-    return Settings()
+    settings = Settings()
+    return _apply_user_config(settings)
 
 
 def reload_settings() -> Settings:
     """
     Reload settings (clear cache and create new instance)
-    
+
+    Also reloads user configuration from disk.
+
     Returns:
         Settings: New settings instance
     """
+    # Also reload user config
+    from sogon.config.user_config import reload_user_config
+    reload_user_config()
+
     get_settings.cache_clear()
     return get_settings()

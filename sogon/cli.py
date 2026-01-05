@@ -12,6 +12,7 @@ from typing_extensions import Annotated
 
 # Import new architecture components
 from sogon.config import get_settings
+from sogon.config.user_config import get_user_config_manager
 from sogon.services.interfaces import (
     AudioService, TranscriptionService,
     YouTubeService, FileService, WorkflowService, TranslationService
@@ -268,7 +269,7 @@ app = typer.Typer(
 @app.command("run")
 def process(
     input_path: Annotated[str, typer.Argument(help="YouTube URL or local audio/video file path")],
-    format: Annotated[str, typer.Option("--format", "-f", help="Output subtitle format")] = "txt",
+    format: Annotated[Optional[str], typer.Option("--format", "-f", help="Output subtitle format (txt, srt, vtt, json)")] = None,
     output_dir: Annotated[Optional[str], typer.Option("--output-dir", "-o", help="Output directory (default: ./result)")] = None,
     keep_audio: Annotated[bool, typer.Option("--keep-audio", help="Keep downloaded audio files")] = False,
     translate: Annotated[bool, typer.Option("--translate", help="Enable translation of subtitles")] = False,
@@ -289,7 +290,12 @@ def process(
     log_level: Annotated[str, typer.Option("--log-level", help="Logging level")] = "INFO"
 ):
     """Process video/audio file for subtitle generation"""
-    
+
+    # Apply user config defaults
+    user_config = get_user_config_manager()
+    if format is None:
+        format = user_config.get_effective_value("default_subtitle_format")
+
     # Validate format
     if format not in ["txt", "srt", "vtt", "json"]:
         typer.echo(f"Error: Invalid format '{format}'. Choose from: txt, srt, vtt, json", err=True)
@@ -406,6 +412,211 @@ def list_languages():
     typer.echo("=" * 40)
     for lang in SupportedLanguage:
         typer.echo(f"  {lang.value:<6} - {lang.display_name}")
+
+
+# Config subcommand group
+config_app = typer.Typer(
+    name="config",
+    help="Manage user configuration (stored in ~/.sogon/config.yaml)",
+    rich_markup_mode="rich",
+)
+
+
+@config_app.command("get")
+def config_get(
+    key: Annotated[
+        Optional[str],
+        typer.Argument(help="Configuration key to retrieve. Omit to list all.")
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show detailed options and ranges")
+    ] = False,
+):
+    """Get a configuration value or list all settings"""
+    from sogon.config.user_config import get_user_config_manager, CONFIGURABLE_KEYS
+
+    manager = get_user_config_manager()
+
+    if key is None:
+        # Show all configurable keys
+        if verbose:
+            typer.echo("Configuration Settings (verbose):")
+            typer.echo("=" * 70)
+        
+        for k, info in CONFIGURABLE_KEYS.items():
+            user_value = manager.get(k)
+            default = info["default"]
+
+            if user_value is not None:
+                display_value = str(user_value)
+                marker = "*"  # Indicates user-set value
+            else:
+                display_value = str(default)
+                marker = " "
+
+            # Show key and value
+            typer.echo(f"{marker} {k:<28} {display_value}")
+
+            # Verbose mode: show choices/range
+            if verbose:
+                if "choices" in info:
+                    choices = info["choices"]
+                    choice_display = []
+                    for c in choices:
+                        if str(c).lower() == display_value.lower():
+                            choice_display.append(f"[{c}]")
+                        else:
+                            choice_display.append(str(c))
+                    typer.echo(f"    └─ {', '.join(choice_display)}")
+                elif "min" in info or "max" in info:
+                    min_val = info.get("min", "")
+                    max_val = info.get("max", "")
+                    typer.echo(f"    └─ Range: {min_val} ~ {max_val}")
+
+        typer.echo("")
+        typer.echo(f"* = User configured  |  Config: {manager.config_path}")
+        if not verbose:
+            typer.echo("Use --verbose (-v) for available options")
+    else:
+        # Get specific key
+        try:
+            info = CONFIGURABLE_KEYS[key]
+            user_value = manager.get(key)
+            
+            if user_value is not None:
+                display_value = user_value
+                source = ""
+            else:
+                display_value = info["default"]
+                source = " (default)"
+            
+            typer.echo(f"{key}={display_value}{source}")
+            
+            # Always show options for specific key lookup
+            if "choices" in info:
+                choices = info["choices"]
+                choice_display = []
+                for c in choices:
+                    if str(c).lower() == str(display_value).lower():
+                        choice_display.append(f"[{c}]")
+                    else:
+                        choice_display.append(str(c))
+                typer.echo(f"Options: {', '.join(choice_display)}")
+            elif "min" in info or "max" in info:
+                min_val = info.get("min", "")
+                max_val = info.get("max", "")
+                typer.echo(f"Range: {min_val} ~ {max_val}")
+                
+        except KeyError as e:
+            typer.echo(f"Error: {e}", err=True)
+            typer.echo("\nAvailable keys:", err=True)
+            for k in CONFIGURABLE_KEYS:
+                typer.echo(f"  {k}", err=True)
+            raise typer.Exit(1)
+
+
+@config_app.command("set")
+def config_set(
+    key: Annotated[str, typer.Argument(help="Configuration key to set")],
+    value: Annotated[str, typer.Argument(help="Value to set")],
+):
+    """Set a configuration value"""
+    from sogon.config.user_config import get_user_config_manager, CONFIGURABLE_KEYS
+
+    manager = get_user_config_manager()
+
+    try:
+        manager.set(key, value)
+        typer.echo(f"Set {key}={value}")
+        typer.echo(f"Saved to: {manager.config_path}")
+    except KeyError as e:
+        typer.echo(f"Error: {e}", err=True)
+        typer.echo("\nAvailable keys:", err=True)
+        for k, info in CONFIGURABLE_KEYS.items():
+            typer.echo(f"  {k}: {info['description']}", err=True)
+        raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        key_info = CONFIGURABLE_KEYS.get(key, {})
+        if "choices" in key_info:
+            typer.echo(f"Valid values: {', '.join(map(str, key_info['choices']))}", err=True)
+        raise typer.Exit(1)
+
+
+@config_app.command("reset")
+def config_reset(
+    key: Annotated[
+        Optional[str],
+        typer.Argument(help="Configuration key to reset. Omit to reset all.")
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Skip confirmation prompt")
+    ] = False,
+):
+    """Reset configuration to defaults"""
+    from sogon.config.user_config import get_user_config_manager
+
+    manager = get_user_config_manager()
+
+    if key is None:
+        # Reset all
+        if not force:
+            confirm = typer.confirm("Reset all configuration to defaults?")
+            if not confirm:
+                typer.echo("Cancelled.")
+                raise typer.Exit(0)
+
+        manager.reset()
+        typer.echo("All configuration reset to defaults.")
+    else:
+        # Reset specific key
+        try:
+            manager.reset(key)
+            typer.echo(f"Reset {key} to default.")
+        except KeyError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+
+
+@config_app.command("list")
+def config_list():
+    """List all available configuration keys"""
+    from sogon.config.user_config import CONFIGURABLE_KEYS
+
+    typer.echo("Available Configuration Keys:")
+    typer.echo("=" * 70)
+
+    for key, info in CONFIGURABLE_KEYS.items():
+        typer.echo(f"\n[bold]{key}[/bold]")
+        typer.echo(f"  Description: {info['description']}")
+        typer.echo(f"  Default: {info['default']}")
+        typer.echo(f"  Type: {info['type'].__name__}")
+        if "choices" in info:
+            typer.echo(f"  Choices: {', '.join(map(str, info['choices']))}")
+        if "min" in info or "max" in info:
+            range_str = f"{info.get('min', '?')} - {info.get('max', '?')}"
+            typer.echo(f"  Range: {range_str}")
+
+
+@config_app.command("path")
+def config_path():
+    """Show configuration file path"""
+    from sogon.config.user_config import get_user_config_manager
+
+    manager = get_user_config_manager()
+    typer.echo(f"Config directory: {manager.config_dir}")
+    typer.echo(f"Config file: {manager.config_path}")
+
+    if manager.config_path.exists():
+        typer.echo("Status: File exists")
+    else:
+        typer.echo("Status: File not created yet (will be created on first 'config set')")
+
+
+# Register config subcommand
+app.add_typer(config_app, name="config")
 
 
 def main():
