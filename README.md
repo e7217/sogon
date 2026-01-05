@@ -11,8 +11,7 @@ An AI-powered automation tool that extracts audio from video URLs or media files
 - **Local & Cloud Inference**: Choose between local Whisper models or cloud APIs (OpenAI, Groq)
 - **Large File Processing**: Automatic workaround for 24MB limit (file splitting)
 - **Precise Timestamps**: Segment-level time information in HH:mm:ss.SSS format
-- **Intelligent Text Correction**: Dual correction system (pattern-based + AI-based)
-- **Systematic Output**: Separate storage of original/corrected versions
+- **Systematic Output**: Organized result storage with metadata
 
 ## Installation
 
@@ -73,7 +72,7 @@ Create a `.env` file and set your Groq API key:
 
 ```bash
 GROQ_API_KEY=your_groq_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here  # Optional: for AI text correction
+OPENAI_API_KEY=your_openai_api_key_here  # Optional: for translation
 ```
 
 ### 2. Basic Usage
@@ -108,21 +107,72 @@ sogon run "video.mp4"
 
 Available local models: `tiny`, `base`, `small`, `medium`, `large`, `large-v2`, `large-v3`
 
+## Configuration
+
+Customize default behavior with persistent settings:
+
+```bash
+# View all settings
+sogon config get
+
+# Set default output format
+sogon config set default_subtitle_format srt
+
+# Set default output directory
+sogon config set output_base_dir ~/subtitles
+
+# Enable translation by default
+sogon config set enable_translation true
+
+# View detailed options with ranges
+sogon config get -v
+
+# Reset to defaults
+sogon config reset
+```
+
+Configuration is stored in `~/.sogon/config.yaml`.
+
+### Available Settings
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `output_base_dir` | Output directory | ./result |
+| `default_subtitle_format` | Subtitle format (txt/srt/vtt/json) | txt |
+| `transcription_provider` | Provider (groq/openai/stable-whisper) | groq |
+| `enable_translation` | Enable translation by default | false |
+| `default_translation_language` | Target language | ko |
+| `default_source_language` | Source language | auto |
+| `log_level` | Logging level | INFO |
+| `keep_temp_files` | Keep temporary files | false |
+| `max_workers` | Concurrent workers (1-16) | 4 |
+| `max_chunk_size_mb` | Audio chunk size (1-100) | 24 |
+
+**Local Model Settings:**
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `local_model_name` | Model (tiny~large-v3-turbo) | base |
+| `local_device` | Device (cpu/cuda/mps) | cuda |
+| `local_compute_type` | Precision (int8~float32) | float16 |
+| `local_beam_size` | Beam size (1-10) | 5 |
+| `local_temperature` | Temperature (0.0-1.0) | 0.0 |
+| `local_vad_filter` | VAD filter | false |
+
 ## System Architecture
 
 ```
-Video URL/File → Audio Extract → Speech Recognition → Text Correction → File Save
-      ↓             ↓                ↓                 ↓              ↓
-  Downloader    Audio Tool    AI Speech Model     AI Correction   result/
+Video URL/File → Audio Extract → Speech Recognition → File Save
+      ↓             ↓                ↓                  ↓
+  Downloader    Audio Tool    AI Speech Model      result/
 ```
 
 ## Processing Steps
 
 1. **Audio Extraction**: Extract audio from video URLs or local files using media processing tools
 2. **File Processing**: Split large files to comply with API limitations
-3. **Speech Recognition**: Process audio with advanced AI models for Korean text
-4. **Text Correction**: Apply pattern-based and AI-based corrections
-5. **Output Generation**: Save original and corrected versions with timestamps
+3. **Speech Recognition**: Process audio with advanced AI models
+4. **Output Generation**: Save transcription results with timestamps
 
 ## Output File Structure
 
@@ -130,17 +180,14 @@ Video URL/File → Audio Extract → Speech Recognition → Text Correction → 
 ```
 result/
 └── yyyyMMDD_HHmmss_video_title/         # Timestamped folder for each video
-    ├── video_title.txt                  # Original continuous text
-    ├── video_title_metadata.json        # Original metadata
-    ├── video_title_timestamps.txt       # Original timestamps
-    ├── video_title_corrected.txt        # Corrected text
-    ├── video_title_corrected_metadata.json # Corrected metadata
-    └── video_title_corrected_timestamps.txt # Corrected timestamps
+    ├── video_title.txt                  # Continuous text
+    ├── video_title_metadata.json        # Metadata with segments
+    └── video_title_timestamps.txt       # Timestamps with text
 ```
 
 ### Timestamp File Format
 ```
-Subtitle with Timestamps (Corrected)
+Subtitle with Timestamps
 ==================================================
 
 [00:00:00.560 → 00:00:03.520] Hello. Actually, I was going to continue the visual story writing series,
@@ -155,26 +202,19 @@ Subtitle with Timestamps (Corrected)
 | **Audio Extraction** | Media Downloader + Audio Processor | Video URL/File → Audio conversion |
 | **Audio Processing** | Audio Library | File splitting, format conversion |
 | **Speech Recognition** | AI Speech Model | Speech → Text + metadata |
-| **AI Correction** | Large Language Model | Text correction |
-| **Environment Management** | Configuration Manager | API key management |
+| **Translation** | Large Language Model | Subtitle translation |
+| **Environment Management** | Configuration Manager | API key and settings |
 
 ## Output Files
 
-The tool generates organized output files with timestamps and metadata for both original and corrected versions.
+The tool generates organized output files with timestamps and metadata.
 
-## Advanced Features
-
-### Existing File Correction
-The tool provides functionality to correct existing transcript files with AI-based improvements.
-
-### CLI Options
+## CLI Options
 
 | Option | Description | Default |
 |--------|-------------|----------|
 | `--format`, `-f` | Output subtitle format (txt, srt, vtt, json) | txt |
 | `--output-dir`, `-o` | Custom output directory | ./result |
-| `--no-correction` | Disable text correction | False |
-| `--no-ai-correction` | Disable AI-based text correction | False |
 | `--keep-audio` | Keep downloaded audio files | False |
 | `--translate` | Enable subtitle translation | False |
 | `--target-language`, `-t` | Target language for translation | None |
@@ -210,9 +250,6 @@ sogon run "/path/to/video/file.mp4"
 ```bash
 # Specify output format
 sogon run "video.mp4" --format srt
-
-# Disable text correction
-sogon run "video.mp4" --no-correction
 
 # Set custom output directory
 sogon run "video.mp4" --output-dir ./my-results
