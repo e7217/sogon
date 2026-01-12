@@ -248,7 +248,11 @@ class ProcessingJob:
             "subtitle_format": self.subtitle_format,
             "keep_audio": self.keep_audio,
             "enable_translation": self.enable_translation,
-            "translation_target_language": self.translation_target_language.value if self.translation_target_language else None,
+            "translation_target_language": (
+                self.translation_target_language.value
+                if hasattr(self.translation_target_language, 'value')
+                else self.translation_target_language
+            ) if self.translation_target_language else None,
             "whisper_source_language": self.whisper_source_language,
             "whisper_model": self.whisper_model,
             "whisper_base_url": self.whisper_base_url,

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import asyncio
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
@@ -210,6 +211,22 @@ app = FastAPI(
     version="2.0.0",
     debug=config.debug,
     lifespan=lifespan
+)
+
+# CORS middleware for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
