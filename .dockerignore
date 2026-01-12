@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.coverage
+htmlcov
+.mypy_cache
+.ruff_cache
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+dist/
+build/
+
+# Output and data
+result/
+data/
+
+# Tests and docs
+tests/
+docs/
+claudedocs/
+
+# IDE
+.vscode
+.idea
+
+# Logs
+*.log
+*.log.*
+
+# Markdown (except README)
+*.md
+!README.md
+
+# Development tools
+Makefile
+.specify
+.serena

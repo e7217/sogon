@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = ''; // Use relative URL for Docker deployment
 const POLL_INTERVAL = 5000; // 5 seconds
 
 // State

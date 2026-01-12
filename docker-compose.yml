@@ -1,0 +1,35 @@
+services:
+  sogon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sogon
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent storage for output files
+      - ./data/result:/app/result
+      # Logs
+      - ./data/logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      # API Configuration
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_DEBUG=false
+      - API_LOG_LEVEL=INFO
+      # Output Directory
+      - SOGON_OUTPUT_DIR=/app/result
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

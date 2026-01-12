@@ -11,6 +11,7 @@ import asyncio
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import config
@@ -223,11 +224,17 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8080",
+        "*",  # Allow all origins for pilot deployment
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve frontend static files
+frontend_path = Path(__file__).parent.parent.parent / "frontend"
+if frontend_path.exists():
+    app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
 
 
 def get_base_url(request: Request) -> str:
@@ -768,13 +775,25 @@ async def get_supported_languages():
     return {"supported_languages": languages}
 
 
+@app.get("/app")
+@app.get("/app/")
+async def serve_frontend():
+    """Serve the frontend application"""
+    frontend_path = Path(__file__).parent.parent.parent / "frontend"
+    index_path = frontend_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    raise HTTPException(status_code=404, detail="Frontend not found")
+
+
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
         "message": "SOGON API Server (Async)",
         "version": "2.0.0",
-        "docs": "/docs"
+        "docs": "/docs",
+        "frontend": "/app"
     }
 
 
