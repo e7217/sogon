@@ -71,7 +71,7 @@ class WorkflowServiceImpl(WorkflowService):
                 subtitle_format=format,
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
-                translation_target_language=translation_target_language.value if translation_target_language else None,
+                translation_target_language=translation_target_language,  # Pass enum directly
                 whisper_source_language=whisper_source_language,
                 whisper_model=whisper_model,
                 whisper_base_url=whisper_base_url,
@@ -119,7 +119,7 @@ class WorkflowServiceImpl(WorkflowService):
                 subtitle_format=format,
                 keep_audio=keep_audio,
                 enable_translation=enable_translation,
-                translation_target_language=translation_target_language.value if translation_target_language else None,
+                translation_target_language=translation_target_language,  # Pass enum directly
                 whisper_source_language=whisper_source_language,
                 whisper_model=whisper_model,
                 whisper_base_url=whisper_base_url,

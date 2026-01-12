@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOGON - Subtitle Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="logo">SOGON</h1>
+            <div class="health-status">
+                <span id="health-indicator" class="status-dot"></span>
+                <span id="health-text">Checking...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab-button active" data-tab="create">New Job</button>
+        <button class="tab-button" data-tab="list">Job List</button>
+        <button class="tab-button" data-tab="settings">Settings</button>
+    </div>
+
+    <main class="container">
+        <!-- Create Job Tab -->
+        <div id="create-tab" class="tab-content active">
+            <div class="card">
+                <h2>Create New Job</h2>
+
+                <!-- Input Type Toggle -->
+                <div class="input-toggle">
+                    <label class="toggle-option">
+                        <input type="radio" name="input-type" value="url" checked>
+                        <span>URL Input</span>
+                    </label>
+                    <label class="toggle-option">
+                        <input type="radio" name="input-type" value="file">
+                        <span>File Upload</span>
+                    </label>
+                </div>
+
+                <!-- URL Input Form -->
+                <form id="url-form" class="input-form">
+                    <div class="form-group">
+                        <label for="url-input">YouTube URL or Media URL</label>
+                        <input type="url" id="url-input" class="input" placeholder="https://www.youtube.com/watch?v=..." required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="subtitle-format">Subtitle Format</label>
+                            <select id="subtitle-format" class="select">
+                                <option value="srt">SRT</option>
+                                <option value="txt">TXT</option>
+                                <option value="vtt">VTT</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="enable-translation">
+                                Enable Translation
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="translation-options" style="display: none;">
+                        <label for="target-language">Target Language (Translation Output)</label>
+                        <select id="target-language" class="select">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="create-url-job">Create Job</button>
+                </form>
+
+                <!-- File Upload Form -->
+                <form id="file-form" class="input-form" style="display: none;">
+                    <div class="form-group">
+                        <label>Select File</label>
+                        <div class="file-drop-zone" id="file-drop-zone">
+                            <p>Drag and drop file or click to select</p>
+                            <p class="text-muted">Supported formats: MP4, MP3, WAV, M4A, etc.</p>
+                            <input type="file" id="file-input" accept="audio/*,video/*" style="display: none;">
+                        </div>
+                        <div id="file-name" class="file-name"></div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="file-subtitle-format">Subtitle Format</label>
+                            <select id="file-subtitle-format" class="select">
+                                <option value="srt">SRT</option>
+                                <option value="txt">TXT</option>
+                                <option value="vtt">VTT</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="file-enable-translation">
+                                Enable Translation
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="file-translation-options" style="display: none;">
+                        <label for="file-target-language">Target Language (Translation Output)</label>
+                        <select id="file-target-language" class="select">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div id="upload-progress" style="display: none; margin-top: 1rem;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="upload-progress-fill" style="width: 0%"></div>
+                        </div>
+                        <p class="text-muted" style="margin-top: 0.5rem;">
+                            <span id="upload-progress-text">Uploading... 0%</span>
+                        </p>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="create-file-job">Upload and Create Job</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Job List Tab -->
+        <div id="list-tab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Job List</h2>
+                    <button class="btn btn-secondary" id="refresh-jobs">Refresh</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="jobs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Input</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-tbody">
+                            <tr>
+                                <td colspan="6" class="text-center">Loading jobs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <div class="card">
+                <h2>Settings</h2>
+
+                <form id="settings-form">
+                    <div class="form-group">
+                        <label for="default-format">Default Subtitle Format</label>
+                        <select id="default-format" class="select">
+                            <option value="srt">SRT</option>
+                            <option value="txt">TXT</option>
+                            <option value="vtt">VTT</option>
+                            <option value="json">JSON</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="default-translation">
+                            Enable translation by default
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="default-language">Default Target Language</label>
+                        <select id="default-language" class="select">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="whisper-model">Whisper Model</label>
+                        <input type="text" id="whisper-model" class="input" placeholder="whisper-large-v3-turbo">
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                        <button type="button" class="btn btn-secondary" id="reset-settings">Reset</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
